@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define HEIGHT (600)
-#define WIDTH (800)
+#define SCREEN_WIDTH (800)
+#define SCREEN_HEIGHT (600)
 #define PALETTE_LENGTH (1 << 16)
 #define MAX_ITER (1000)
 
@@ -15,6 +15,15 @@ Colormap screen_colormap;
 GC       gc;
 Window   w;
 XColor * palette;
+
+typedef struct {
+	double x;
+	double y;
+	double minx;
+	double maxx;
+	double miny;
+	double maxy;
+} GRAPH;
 
 double scale(double point, double minFrom, double maxFrom, double minTo, double maxTo) {
 	return (((maxTo - minTo) * (point - minFrom)) / (maxFrom - minFrom)) + minTo;
@@ -41,10 +50,10 @@ void mandelbrot(double center_x, double center_y, double minx, double maxx, doub
 	printf("Building image...");
 	double        x0, y0, x, y, xtemp, log_zn, nu, iteration;
 	unsigned long colorIndex, c1, c2;
-	for (int py = 0; py < HEIGHT; py++) {
-		for (int px = 0; px < WIDTH; px++) {
-			x0 = scale(px, 0, WIDTH, minx, maxx);
-			y0 = scale(py, 0, HEIGHT, miny, maxy);
+	for (int py = 0; py < SCREEN_HEIGHT; py++) {
+		for (int px = 0; px < SCREEN_WIDTH; px++) {
+			x0 = scale(px, 0, SCREEN_WIDTH, minx, maxx);
+			y0 = scale(py, 0, SCREEN_HEIGHT, miny, maxy);
 			x  = center_x;
 			y  = center_y;
 			for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
@@ -73,6 +82,13 @@ int main() {
 	printf("Building X11 window...");
 	XEvent xevent;
 	int    button, mousex, mousey;
+	GRAPH  graph;
+	graph.x    = 0.0;
+	graph.y    = 0.0;
+	graph.minx = -2.5;
+	graph.maxx = 1.0;
+	graph.miny = -1.0;
+	graph.maxy = 1.0;
 
 	dpy = XOpenDisplay(NULL);
 	assert(dpy);
@@ -80,7 +96,7 @@ int main() {
 	int blackColor  = BlackPixel(dpy, DefaultScreen(dpy));
 	screen_colormap = DefaultColormap(dpy, DefaultScreen(dpy));
 
-	w = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, WIDTH, HEIGHT, 0, blackColor, blackColor);
+	w = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, blackColor, blackColor);
 
 	XSelectInput(dpy, w, StructureNotifyMask); // We want to get MapNotify events
 	XMapWindow(dpy, w);                        // "Map" the window (that is, make it appear on the screen)
@@ -98,6 +114,8 @@ int main() {
 	palette = malloc(PALETTE_LENGTH * sizeof(XColor));
 	colorGradient(&palette, 0.3, 0.3, 0.3, 0, 2, 4, 128, 127, PALETTE_LENGTH);
 	printf("done!\n");
+
+	mandelbrot(graph.x, graph.y, graph.minx, graph.maxx, graph.miny, graph.maxy); // Initial mandelbrot
 
 	XSelectInput(dpy, w, ButtonPressMask);
 	while (1) {
@@ -127,14 +145,24 @@ int main() {
 					break;
 			}
 		}
+		graph.x = scale((double)mousex, 0.0, (double)SCREEN_WIDTH, graph.minx, graph.maxx);
+		graph.y = scale((double)mousey, 0.0, (double)SCREEN_HEIGHT, graph.miny, graph.maxy);
 		if (button == Button1) {
-			printf("left click at %d,%d\n", mousex, mousey);
+			printf("left click at %i,%i => %f,%f\n", mousex, mousey, graph.x, graph.y);
+			graph.minx = 0.9 * (graph.x + graph.minx);
+			graph.maxx = 0.9 * (graph.x + graph.maxx);
+			graph.miny = 0.9 * (graph.y + graph.miny);
+			graph.maxy = 0.9 * (graph.y + graph.maxy);
+		} else if (button == Button3) {
+			printf("right click at %i,%i => %f,%f\n", mousex, mousey, graph.x, graph.y);
+			graph.minx += graph.x;
+			graph.maxx += graph.x;
+			graph.miny += graph.y;
+			graph.maxy += graph.y;
 		}
+		printf("minx: %f maxx: %f miny: %f maxy: %f\n", graph.minx, graph.maxx, graph.miny, graph.maxy);
+		mandelbrot(graph.x, graph.y, graph.minx, graph.maxx, graph.miny, graph.maxy);
 	}
-
-	//mandelbrot(0.0, 0.0, -2.5, 1.0, -1.0, 1.0);
-
-	sleep(5);
 	XCloseDisplay(dpy);
 	return 0;
 }
