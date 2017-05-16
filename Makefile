@@ -1,5 +1,5 @@
 TARGET = mandelbrot
-LIBS = -lm
+LIBS = -lm -lX11
 CFLAGS = -g -Wall -std=c99
 
 .PHONY: default all clean
