@@ -1,20 +1,18 @@
 #include <X11/Xlib.h>
 #include <assert.h>
 #include <math.h>
+#include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#define SCREEN_WIDTH (800)
-#define SCREEN_HEIGHT (600)
+#define SCREEN_WIDTH (200)
+#define SCREEN_HEIGHT (200)
 #define PALETTE_LENGTH (1 << 16)
 #define MAX_ITER (1000)
-
-Display *dpy;
-Colormap screen_colormap;
-GC       gc;
-Window   w;
-XColor * palette;
+#define NUM_THREADS (8)
+#define THREAD_BLOCKSIZE (123)
 
 typedef struct {
 	double x;
@@ -24,6 +22,15 @@ typedef struct {
 	double miny;
 	double maxy;
 } GRAPH;
+
+Display *       dpy;
+Colormap        screen_colormap;
+GC              gc;
+Window          w;
+XColor *        palette;
+GRAPH           graph;
+unsigned long   pixelNum;
+pthread_mutex_t mutex_data, mutex_flush;
 
 double scale(double point, double minFrom, double maxFrom, double minTo, double maxTo) {
 	return (((maxTo - minTo) * (point - minFrom)) / (maxFrom - minFrom)) + minTo;
@@ -46,33 +53,96 @@ void colorGradient(XColor **pal, double f1, double f2, double f3, double p1, dou
 	}
 }
 
-void mandelbrot(double center_x, double center_y, double minx, double maxx, double miny, double maxy) {
-	printf("Building image...");
-	double        x0, y0, x, y, xtemp, log_zn, nu, iteration;
-	unsigned long colorIndex, c1, c2;
-	for (int py = 0; py < SCREEN_HEIGHT; py++) {
-		for (int px = 0; px < SCREEN_WIDTH; px++) {
-			x0 = scale(px, 0, SCREEN_WIDTH, minx, maxx);
-			y0 = scale(py, 0, SCREEN_HEIGHT, miny, maxy);
-			x  = center_x;
-			y  = center_y;
-			for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
-				xtemp = x * x - y * y + x0;
-				y     = 2 * x * y + y0;
-				x     = xtemp;
-			}
+void *mandelThread(void *arg) {
+	int threadNumber = (int)(uintptr_t)arg;
+	printf("Thread #%i created\n", threadNumber);
 
-			/*if (iteration < MAX_ITER) {
-				log_zn = log(x * x + y * y) / 2.0;
-				nu     = log(log_zn / log(2.0)) / 2.0;
-				iteration += 1 - nu;
-			}*/
-			//c1 = (unsigned long)(((int)(iteration) / MAX_ITER) * PALETTE_LENGTH);
-			//c2 = (unsigned long)(((int)(iteration + 10) / MAX_ITER) * PALETTE_LENGTH);
-			colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
-			XSetForeground(dpy, gc, palette[colorIndex].pixel);
-			XDrawPoint(dpy, w, gc, px, py);
-			XFlush(dpy);
+	double        x0, y0, x, y, xtemp, iteration;
+	unsigned long colorIndex;
+	unsigned long pixelNumStart, pixelNumCurrent;
+
+	while (1) {
+		//printf("Thread #%i waiting on data\n", threadNumber);
+		pthread_mutex_lock(&mutex_data);
+		//printf("Thread #%i doing data\n", threadNumber);
+		if (pixelNum >= SCREEN_WIDTH * SCREEN_HEIGHT) { // No more work to be done
+			pthread_mutex_unlock(&mutex_data);
+			pthread_exit(NULL);
+			return;
+		} else {
+			pixelNumStart   = pixelNum;
+			pixelNumCurrent = pixelNum;
+			pixelNum += THREAD_BLOCKSIZE;
+		}
+		pthread_mutex_unlock(&mutex_data);
+
+		int py, px;
+		unsigned long I = pixelNumStart;
+		for (py = 0; py < SCREEN_HEIGHT && I > 0; py++) {
+			for (px = 0; px < SCREEN_WIDTH && I > 0; px++) {
+				I--;
+			}
+		}
+
+		//int py = pixelNumStart / SCREEN_WIDTH;
+		//int px = ((1.0 * pixelNumStart / SCREEN_WIDTH) - (pixelNumStart / SCREEN_WIDTH)) * SCREEN_WIDTH;
+		//printf("Thread #%i starting %i, %i\n", threadNumber, py, px);
+		for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && py < SCREEN_HEIGHT; py++) {
+			//printf("Thread #%i %i %i (%i %i)\n", threadNumber, pixelNumCurrent, pixelNumStart + THREAD_BLOCKSIZE, px, py);
+			for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && px < SCREEN_WIDTH; px++) {
+				//printf("Thread #%i doing %i, %i\n", threadNumber, py, px);
+				x0 = scale(px, 0, SCREEN_WIDTH, graph.minx, graph.maxx);
+				y0 = scale(py, 0, SCREEN_HEIGHT, graph.miny, graph.maxy);
+				x  = graph.x;
+				y  = graph.y;
+				for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
+					xtemp = x * x - y * y + x0;
+					y     = 2 * x * y + y0;
+					x     = xtemp;
+				}
+
+				colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
+				pixelNumCurrent++;
+
+				//printf("Thread #%i waiting on flush\n", threadNumber);
+				pthread_mutex_lock(&mutex_flush);
+				XSetForeground(dpy, gc, palette[colorIndex].pixel);
+				XDrawPoint(dpy, w, gc, px, py);
+				XFlush(dpy);
+				pthread_mutex_unlock(&mutex_flush);
+				//printf("Thread #%i done flush\n", threadNumber);
+			}
+		}
+		//printf("Thread #%i done iter\n", threadNumber);
+	}
+}
+
+void startMandel() {
+	printf("Building image...");
+	int            threadIds[NUM_THREADS];
+	pthread_attr_t attr;
+	pthread_t      threads[NUM_THREADS];
+
+	pthread_mutex_init(&mutex_data, NULL);  // Init mutex for data
+	pthread_mutex_init(&mutex_flush, NULL); // Init mutex for flushing
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+	pixelNum = 0;
+
+	for (int i = 0; i < NUM_THREADS; i++) { // Create threads
+		threadIds[i] = i;
+		pthread_create(&threads[i], &attr, mandelThread, (void *)(uintptr_t)threadIds[i]);
+	}
+
+	pthread_attr_destroy(&attr);
+
+	for (int i = 0; i < NUM_THREADS; i++) { // Join all threads
+		void *status;
+		pthread_join(threads[i], &status);
+
+		if (status != 0) {
+			printf("Thread #%i exited with %i\n", i, (int)(uintptr_t)status);
+			exit(1);
 		}
 	}
 	printf("done!\n");
@@ -80,9 +150,9 @@ void mandelbrot(double center_x, double center_y, double minx, double maxx, doub
 
 int main() {
 	printf("Building X11 window...");
+
 	XEvent xevent;
 	int    button, mousex, mousey;
-	GRAPH  graph;
 	graph.x    = 0.0;
 	graph.y    = 0.0;
 	graph.minx = -2.5;
@@ -115,7 +185,7 @@ int main() {
 	colorGradient(&palette, 0.3, 0.3, 0.3, 0, 2, 4, 128, 127, PALETTE_LENGTH);
 	printf("done!\n");
 
-	mandelbrot(graph.x, graph.y, graph.minx, graph.maxx, graph.miny, graph.maxy); // Initial mandelbrot
+	startMandel(); // Initial mandelbrot
 
 	XSelectInput(dpy, w, ButtonPressMask);
 	while (1) {
@@ -161,7 +231,7 @@ int main() {
 			graph.maxy += graph.y;
 		}
 		printf("minx: %f maxx: %f miny: %f maxy: %f\n", graph.minx, graph.maxx, graph.miny, graph.maxy);
-		mandelbrot(graph.x, graph.y, graph.minx, graph.maxx, graph.miny, graph.maxy);
+		startMandel();
 	}
 	XCloseDisplay(dpy);
 	return 0;
