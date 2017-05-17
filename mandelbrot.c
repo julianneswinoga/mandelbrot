@@ -93,9 +93,9 @@ void *mandelThread(void *arg) {
 				x  = graph.x;
 				y  = graph.y;
 
-				q = (x - 0.25) * (x - 0.25) + y * y;
+				q = (x0 - 0.25) * (x0 - 0.25) + y0 * y0;
 
-				if (q * (q + (x - 0.25)) < 0.25 * y * y) {
+				if ((x0 + 1) * (x0 + 1) + y0 * y0 < 1 / 16 || q * (q + x0 - 0.25) < 0.25 * y0 * y0) {
 					iteration = MAX_ITER;
 				} else {
 					for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
