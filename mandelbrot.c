@@ -7,9 +7,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define SCREEN_WIDTH (500)
-#define SCREEN_HEIGHT (500)
-#define PALETTE_LENGTH (100)
+#define SCREEN_WIDTH (200)
+#define SCREEN_HEIGHT (200)
+#define PALETTE_LENGTH (1000)
 #define MAX_ITER (1000)
 #define NUM_THREADS (8)
 #define THREAD_BLOCKSIZE (2000)
@@ -188,10 +188,10 @@ int main() {
 	XGCValues xgcv;
 	for (int i = 0; i < PALETTE_LENGTH; i++) {
 		xgcv.foreground = palette[i].pixel;
-		gcs[i] = XCreateGC(dpy, w, GCForeground, &xgcv);
-		XFillRectangle(dpy, w, gcs[i], (int)(i * (1.0 * SCREEN_WIDTH / PALETTE_LENGTH)), 0, (int)(1.0 * SCREEN_WIDTH / PALETTE_LENGTH), SCREEN_HEIGHT - 1);
+		gcs[i]          = XCreateGC(dpy, w, GCForeground, &xgcv);
+		XFillRectangle(dpy, w, gcs[i], (int)(i * (1.0 * SCREEN_WIDTH / PALETTE_LENGTH)), 0, (int)(1.0 * SCREEN_WIDTH / PALETTE_LENGTH) + 1, SCREEN_HEIGHT - 1);
 	}
-	gcs[PALETTE_LENGTH] = XCreateGC(dpy, w, 0, NULL);
+	gcs[PALETTE_LENGTH] = XCreateGC(dpy, w, 0, NULL); // Set last color to black
 	XFlush(dpy);
 
 	sleep(3);
