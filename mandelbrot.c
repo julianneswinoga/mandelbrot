@@ -57,7 +57,7 @@ void *mandelThread(void *arg) {
 	int threadNumber = (int)(uintptr_t)arg;
 	printf("Thread #%i created\n", threadNumber);
 
-	double        x0, y0, x, y, xtemp, iteration;
+	double        x0, y0, x, y, xtemp, iteration, q;
 	unsigned long colorIndex;
 	unsigned long pixelNumStart, pixelNumCurrent;
 
@@ -92,10 +92,17 @@ void *mandelThread(void *arg) {
 				y0 = scale(py, 0, SCREEN_HEIGHT, graph.miny, graph.maxy);
 				x  = graph.x;
 				y  = graph.y;
-				for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
-					xtemp = x * x - y * y + x0;
-					y     = 2 * x * y + y0;
-					x     = xtemp;
+
+				q = (x - 0.25) * (x - 0.25) + y * y;
+
+				if (q * (q + (x - 0.25)) < 0.25 * y * y) {
+					iteration = MAX_ITER;
+				} else {
+					for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
+						xtemp = x * x - y * y + x0;
+						y     = 2 * x * y + y0;
+						x     = xtemp;
+					}
 				}
 
 				colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
