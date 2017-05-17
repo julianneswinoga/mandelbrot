@@ -7,12 +7,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define SCREEN_WIDTH (200)
-#define SCREEN_HEIGHT (200)
+#define SCREEN_WIDTH (500)
+#define SCREEN_HEIGHT (500)
 #define PALETTE_LENGTH (1 << 16)
 #define MAX_ITER (1000)
 #define NUM_THREADS (8)
-#define THREAD_BLOCKSIZE (123)
+#define THREAD_BLOCKSIZE (2000)
 
 typedef struct {
 	double x;
@@ -76,19 +76,20 @@ void *mandelThread(void *arg) {
 		}
 		pthread_mutex_unlock(&mutex_data);
 
-		int py, px;
-		unsigned long I = pixelNumStart;
-		for (py = 0; py < SCREEN_HEIGHT && I > 0; py++) {
-			for (px = 0; px < SCREEN_WIDTH && I > 0; px++) {
-				I--;
-			}
+		int  py, px;
+		long I = pixelNumStart;
+		for (py = 0; py < SCREEN_HEIGHT && I - SCREEN_HEIGHT > 0; py++) {
+			I -= SCREEN_HEIGHT;
+		}
+
+		for (px = 0; px < SCREEN_WIDTH && I > 0; px++) {
+			I--;
 		}
 
 		//int py = pixelNumStart / SCREEN_WIDTH;
 		//int px = ((1.0 * pixelNumStart / SCREEN_WIDTH) - (pixelNumStart / SCREEN_WIDTH)) * SCREEN_WIDTH;
 		//printf("Thread #%i starting %i, %i\n", threadNumber, py, px);
 		for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && py < SCREEN_HEIGHT; py++) {
-			//printf("Thread #%i %i %i (%i %i)\n", threadNumber, pixelNumCurrent, pixelNumStart + THREAD_BLOCKSIZE, px, py);
 			for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && px < SCREEN_WIDTH; px++) {
 				//printf("Thread #%i doing %i, %i\n", threadNumber, py, px);
 				x0 = scale(px, 0, SCREEN_WIDTH, graph.minx, graph.maxx);
@@ -102,6 +103,7 @@ void *mandelThread(void *arg) {
 				}
 
 				colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
+				//printf("Thread #%i %i %i (%i %i)\n", threadNumber, pixelNumCurrent, pixelNumStart + THREAD_BLOCKSIZE, px, py);
 				pixelNumCurrent++;
 
 				//printf("Thread #%i waiting on flush\n", threadNumber);
@@ -112,6 +114,7 @@ void *mandelThread(void *arg) {
 				pthread_mutex_unlock(&mutex_flush);
 				//printf("Thread #%i done flush\n", threadNumber);
 			}
+			px = 0;
 		}
 		//printf("Thread #%i done iter\n", threadNumber);
 	}
