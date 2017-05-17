@@ -18,10 +18,7 @@
 typedef struct {
 	double x;
 	double y;
-	double minx;
-	double maxx;
-	double miny;
-	double maxy;
+	double scale;
 } GRAPH;
 
 Display *       dpy;
@@ -87,10 +84,10 @@ void *mandelThread(void *arg) {
 
 		for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && py < SCREEN_HEIGHT; py++) {
 			for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && px < SCREEN_WIDTH; px++) {
-				x0 = scale(px, 0, SCREEN_WIDTH, graph.minx, graph.maxx);
-				y0 = scale(py, 0, SCREEN_HEIGHT, graph.miny, graph.maxy);
-				x  = 0;
-				y  = 0;
+				x0 = graph.x + (px - SCREEN_WIDTH / 2) * graph.scale;
+				y0 = graph.y + (py - SCREEN_HEIGHT / 2) * graph.scale;
+				x  = x0;
+				y  = y0;
 
 				q = (x0 - 0.25) * (x0 - 0.25) + y0 * y0;
 
@@ -153,13 +150,9 @@ int main() {
 
 	XEvent xevent;
 	int    button, mousex, mousey;
-	double oldx, oldy, xdiff, ydiff;
-	graph.x    = 0.0;
-	graph.y    = 0.0;
-	graph.minx = -2.5;
-	graph.maxx = 1.0;
-	graph.miny = -1.0;
-	graph.maxy = 1.0;
+	graph.x     = 0.0;
+	graph.y     = 0.0;
+	graph.scale = 0.02;
 
 	dpy = XOpenDisplay(NULL);
 	assert(dpy);
@@ -226,24 +219,14 @@ int main() {
 					break;
 			}
 		}
-		oldx    = graph.x;
-		oldy    = graph.y;
-		graph.x = scale((double)mousex, 0.0, (double)SCREEN_WIDTH, graph.minx, graph.maxx);
-		graph.y = scale((double)mousey, 0.0, (double)SCREEN_HEIGHT, graph.miny, graph.maxy);
-		xdiff   = graph.x - oldx;
-		ydiff   = graph.y - oldy;
+		graph.x += graph.scale * (mousex - SCREEN_WIDTH / 2);
+		graph.y += graph.scale * (mousey - SCREEN_HEIGHT / 2);
+
 		if (button == Button1) { // Zooming
-			graph.minx = SCALE_FACTOR * (xdiff + graph.minx);
-			graph.maxx = SCALE_FACTOR * (xdiff + graph.maxx);
-			graph.miny = SCALE_FACTOR * (ydiff + graph.miny);
-			graph.maxy = SCALE_FACTOR * (ydiff + graph.maxy);
+			graph.scale *= 0.5;
 		} else if (button == Button3) { // Panning
-			graph.minx += xdiff;
-			graph.maxx += xdiff;
-			graph.miny += ydiff;
-			graph.maxy += ydiff;
 		}
-		printf("\t%f\n%f\t%f\n\t%f\n\tat(%f,%f)\n", graph.maxy, graph.minx, graph.maxx, graph.miny, graph.x, graph.y);
+		//printf("\t%f\n%f\t%f\n\t%f\n\tat(%f,%f)\n", graph.maxy, graph.minx, graph.maxx, graph.miny, graph.x, graph.y);
 		startMandel();
 	}
 	XCloseDisplay(dpy);
