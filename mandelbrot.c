@@ -13,6 +13,7 @@
 #define MAX_ITER (1000)
 #define NUM_THREADS (8)
 #define THREAD_BLOCKSIZE (2000)
+#define SCALE_FACTOR (0.5)
 
 typedef struct {
 	double x;
@@ -62,13 +63,11 @@ void *mandelThread(void *arg) {
 	unsigned long pixelNumStart, pixelNumCurrent;
 
 	while (1) {
-		//printf("Thread #%i waiting on data\n", threadNumber);
 		pthread_mutex_lock(&mutex_data);
-		//printf("Thread #%i doing data\n", threadNumber);
 		if (pixelNum >= SCREEN_WIDTH * SCREEN_HEIGHT) { // No more work to be done
 			pthread_mutex_unlock(&mutex_data);
 			pthread_exit(NULL);
-			return;
+			return NULL;
 		} else {
 			pixelNumStart   = pixelNum;
 			pixelNumCurrent = pixelNum;
@@ -90,8 +89,8 @@ void *mandelThread(void *arg) {
 			for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && px < SCREEN_WIDTH; px++) {
 				x0 = scale(px, 0, SCREEN_WIDTH, graph.minx, graph.maxx);
 				y0 = scale(py, 0, SCREEN_HEIGHT, graph.miny, graph.maxy);
-				x  = graph.x;
-				y  = graph.y;
+				x  = 0;
+				y  = 0;
 
 				q = (x0 - 0.25) * (x0 - 0.25) + y0 * y0;
 
@@ -155,6 +154,7 @@ int main() {
 
 	XEvent xevent;
 	int    button, mousex, mousey;
+	double oldx, oldy, xdiff, ydiff;
 	graph.x    = 0.0;
 	graph.y    = 0.0;
 	graph.minx = -2.5;
@@ -217,22 +217,26 @@ int main() {
 					break;
 			}
 		}
+		oldx = graph.x;
+		oldy = graph.y;
 		graph.x = scale((double)mousex, 0.0, (double)SCREEN_WIDTH, graph.minx, graph.maxx);
 		graph.y = scale((double)mousey, 0.0, (double)SCREEN_HEIGHT, graph.miny, graph.maxy);
-		if (button == Button1) {
+		xdiff = graph.x - oldx;
+		ydiff = graph.y - oldy;
+		if (button == Button1) { // Zooming
 			printf("left click at %i,%i => %f,%f\n", mousex, mousey, graph.x, graph.y);
-			graph.minx = 0.9 * (graph.x + graph.minx);
-			graph.maxx = 0.9 * (graph.x + graph.maxx);
-			graph.miny = 0.9 * (graph.y + graph.miny);
-			graph.maxy = 0.9 * (graph.y + graph.maxy);
-		} else if (button == Button3) {
+			graph.minx = SCALE_FACTOR * (xdiff + graph.minx);
+			graph.maxx = SCALE_FACTOR * (xdiff + graph.maxx);
+			graph.miny = SCALE_FACTOR * (ydiff + graph.miny);
+			graph.maxy = SCALE_FACTOR * (ydiff + graph.maxy);
+		} else if (button == Button3) { // Panning
 			printf("right click at %i,%i => %f,%f\n", mousex, mousey, graph.x, graph.y);
-			graph.minx += graph.x;
-			graph.maxx += graph.x;
-			graph.miny += graph.y;
-			graph.maxy += graph.y;
+			graph.minx += xdiff;
+			graph.maxx += xdiff;
+			graph.miny += ydiff;
+			graph.maxy += ydiff;
 		}
-		printf("minx: %f maxx: %f miny: %f maxy: %f\n", graph.minx, graph.maxx, graph.miny, graph.maxy);
+		printf("\t%f\n%f\t%f\n\t%f\n\tat(%f,%f)\n", graph.maxy, graph.minx, graph.maxx, graph.miny, graph.x, graph.y);
 		startMandel();
 	}
 	XCloseDisplay(dpy);
