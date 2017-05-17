@@ -26,7 +26,7 @@ typedef struct {
 
 Display *       dpy;
 Colormap        screen_colormap;
-GC              gc;
+GC *            gcs;
 Window          w;
 XColor *        palette;
 GRAPH           graph;
@@ -108,8 +108,7 @@ void *mandelThread(void *arg) {
 				pixelNumCurrent++;
 
 				pthread_mutex_lock(&mutex_flush);
-				XSetForeground(dpy, gc, palette[colorIndex].pixel);
-				XDrawPoint(dpy, w, gc, px, py);
+				XDrawPoint(dpy, w, gcs[colorIndex], px, py);
 				XFlush(dpy);
 				pthread_mutex_unlock(&mutex_flush);
 			}
@@ -173,8 +172,6 @@ int main() {
 	XSelectInput(dpy, w, StructureNotifyMask); // We want to get MapNotify events
 	XMapWindow(dpy, w);                        // "Map" the window (that is, make it appear on the screen)
 
-	gc = XCreateGC(dpy, w, 0, NULL); // Create a "Graphics Context"
-
 	while (1) { // Wait for the MapNotify event
 		XNextEvent(dpy, &xevent);
 		if (xevent.type == MapNotify)
@@ -187,10 +184,14 @@ int main() {
 	colorGradient(&palette, 0.3, 0.3, 0.3, 0, 2, 4, (1 << 15), (1 << 15), PALETTE_LENGTH);
 	printf("done!\n");
 
+	gcs = malloc(PALETTE_LENGTH * sizeof(GC) + 1); // Allocate graphics contexts of PALETTE_LENGTH size + 1 for black
+	XGCValues xgcv;
 	for (int i = 0; i < PALETTE_LENGTH; i++) {
-		XSetForeground(dpy, gc, palette[i].pixel);
-		XFillRectangle(dpy, w, gc, (int)(i * (1.0 * SCREEN_WIDTH / PALETTE_LENGTH)), 0, (int)(1.0 * SCREEN_WIDTH / PALETTE_LENGTH), SCREEN_HEIGHT - 1);
+		xgcv.foreground = palette[i].pixel;
+		gcs[i] = XCreateGC(dpy, w, GCForeground, &xgcv);
+		XFillRectangle(dpy, w, gcs[i], (int)(i * (1.0 * SCREEN_WIDTH / PALETTE_LENGTH)), 0, (int)(1.0 * SCREEN_WIDTH / PALETTE_LENGTH), SCREEN_HEIGHT - 1);
 	}
+	gcs[PALETTE_LENGTH] = XCreateGC(dpy, w, 0, NULL);
 	XFlush(dpy);
 
 	sleep(3);
