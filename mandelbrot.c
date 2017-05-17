@@ -9,7 +9,7 @@
 
 #define SCREEN_WIDTH (500)
 #define SCREEN_HEIGHT (500)
-#define PALETTE_LENGTH (1 << 16)
+#define PALETTE_LENGTH (100)
 #define MAX_ITER (1000)
 #define NUM_THREADS (8)
 #define THREAD_BLOCKSIZE (2000)
@@ -46,9 +46,9 @@ double interpolate(double x, int x0, int y0, int x1, int y1) {
  */
 void colorGradient(XColor **pal, double f1, double f2, double f3, double p1, double p2, double p3, double center, double width, int len) {
 	for (int i = 0; i < len; i++) {
-		(*pal)[i].red   = (1 << 16) * sin(f1 * i + p1) * width + center;
-		(*pal)[i].green = (1 << 16) * sin(f2 * i + p2) * width + center;
-		(*pal)[i].blue  = (1 << 16) * sin(f3 * i + p3) * width + center;
+		(*pal)[i].red   = sin(f1 * i + p1) * width + center;
+		(*pal)[i].green = sin(f2 * i + p2) * width + center;
+		(*pal)[i].blue  = sin(f3 * i + p3) * width + center;
 		(*pal)[i].flags = DoRed | DoGreen | DoBlue;
 		XAllocColor(dpy, screen_colormap, &((*pal)[i]));
 	}
@@ -184,8 +184,16 @@ int main() {
 
 	printf("Building color palette...");
 	palette = malloc(PALETTE_LENGTH * sizeof(XColor));
-	colorGradient(&palette, 0.3, 0.3, 0.3, 0, 2, 4, 128, 127, PALETTE_LENGTH);
+	colorGradient(&palette, 0.3, 0.3, 0.3, 0, 2, 4, (1 << 15), (1 << 15), PALETTE_LENGTH);
 	printf("done!\n");
+
+	for (int i = 0; i < PALETTE_LENGTH; i++) {
+		XSetForeground(dpy, gc, palette[i].pixel);
+		XFillRectangle(dpy, w, gc, (int)(i * (1.0 * SCREEN_WIDTH / PALETTE_LENGTH)), 0, (int)(1.0 * SCREEN_WIDTH / PALETTE_LENGTH), SCREEN_HEIGHT - 1);
+	}
+	XFlush(dpy);
+
+	sleep(3);
 
 	startMandel(); // Initial mandelbrot
 
@@ -217,20 +225,18 @@ int main() {
 					break;
 			}
 		}
-		oldx = graph.x;
-		oldy = graph.y;
+		oldx    = graph.x;
+		oldy    = graph.y;
 		graph.x = scale((double)mousex, 0.0, (double)SCREEN_WIDTH, graph.minx, graph.maxx);
 		graph.y = scale((double)mousey, 0.0, (double)SCREEN_HEIGHT, graph.miny, graph.maxy);
-		xdiff = graph.x - oldx;
-		ydiff = graph.y - oldy;
+		xdiff   = graph.x - oldx;
+		ydiff   = graph.y - oldy;
 		if (button == Button1) { // Zooming
-			printf("left click at %i,%i => %f,%f\n", mousex, mousey, graph.x, graph.y);
 			graph.minx = SCALE_FACTOR * (xdiff + graph.minx);
 			graph.maxx = SCALE_FACTOR * (xdiff + graph.maxx);
 			graph.miny = SCALE_FACTOR * (ydiff + graph.miny);
 			graph.maxy = SCALE_FACTOR * (ydiff + graph.maxy);
 		} else if (button == Button3) { // Panning
-			printf("right click at %i,%i => %f,%f\n", mousex, mousey, graph.x, graph.y);
 			graph.minx += xdiff;
 			graph.maxx += xdiff;
 			graph.miny += ydiff;
