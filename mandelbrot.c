@@ -86,12 +86,8 @@ void *mandelThread(void *arg) {
 			I--;
 		}
 
-		//int py = pixelNumStart / SCREEN_WIDTH;
-		//int px = ((1.0 * pixelNumStart / SCREEN_WIDTH) - (pixelNumStart / SCREEN_WIDTH)) * SCREEN_WIDTH;
-		//printf("Thread #%i starting %i, %i\n", threadNumber, py, px);
 		for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && py < SCREEN_HEIGHT; py++) {
 			for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && px < SCREEN_WIDTH; px++) {
-				//printf("Thread #%i doing %i, %i\n", threadNumber, py, px);
 				x0 = scale(px, 0, SCREEN_WIDTH, graph.minx, graph.maxx);
 				y0 = scale(py, 0, SCREEN_HEIGHT, graph.miny, graph.maxy);
 				x  = graph.x;
@@ -103,20 +99,16 @@ void *mandelThread(void *arg) {
 				}
 
 				colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
-				//printf("Thread #%i %i %i (%i %i)\n", threadNumber, pixelNumCurrent, pixelNumStart + THREAD_BLOCKSIZE, px, py);
 				pixelNumCurrent++;
 
-				//printf("Thread #%i waiting on flush\n", threadNumber);
 				pthread_mutex_lock(&mutex_flush);
 				XSetForeground(dpy, gc, palette[colorIndex].pixel);
 				XDrawPoint(dpy, w, gc, px, py);
 				XFlush(dpy);
 				pthread_mutex_unlock(&mutex_flush);
-				//printf("Thread #%i done flush\n", threadNumber);
 			}
 			px = 0;
 		}
-		//printf("Thread #%i done iter\n", threadNumber);
 	}
 }
 
