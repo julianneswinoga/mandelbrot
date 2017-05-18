@@ -7,18 +7,21 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#define M_PI 3.14159265358979323846
+
 #define SCREEN_WIDTH (200)
 #define SCREEN_HEIGHT (200)
 #define PALETTE_LENGTH (1000)
+#define PALETTE_RAINBOWS (6)
 #define MAX_ITER (1000)
 #define NUM_THREADS (8)
-#define THREAD_BLOCKSIZE (2000)
-#define SCALE_FACTOR (0.5)
+#define THREAD_BLOCKSIZE (123)
+#define SCALE_FACTOR (0.1)
 
 typedef struct {
-	double x;
-	double y;
-	double scale;
+	long double x;
+	long double y;
+	long double scale;
 } GRAPH;
 
 Display *       dpy;
@@ -47,7 +50,7 @@ void *mandelThread(void *arg) {
 	int threadNumber = (int)(uintptr_t)arg;
 	printf("Thread #%i created\n", threadNumber);
 
-	double        x0, y0, x, y, xtemp, iteration, q;
+	long double   x0, y0, x, y, xtemp, iteration, q;
 	unsigned long colorIndex;
 	unsigned long pixelNumStart, pixelNumCurrent;
 
@@ -74,34 +77,36 @@ void *mandelThread(void *arg) {
 			I--;
 		}
 
-		for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && py < SCREEN_HEIGHT; py++) {
-			for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE && px < SCREEN_WIDTH; px++) {
-				x0 = graph.x + (px - SCREEN_WIDTH / 2) * graph.scale;
-				y0 = graph.y + (py - SCREEN_HEIGHT / 2) * graph.scale;
-				x  = x0;
-				y  = y0;
-
-				q = (x0 - 0.25) * (x0 - 0.25) + y0 * y0;
-
-				if ((x0 + 1) * (x0 + 1) + y0 * y0 < 1 / 16 || q * (q + x0 - 0.25) < 0.25 * y0 * y0) {
-					iteration = MAX_ITER;
-				} else {
-					for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
-						xtemp = x * x - y * y + x0;
-						y     = 2 * x * y + y0;
-						x     = xtemp;
-					}
-				}
-
-				colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
-				pixelNumCurrent++;
-
-				pthread_mutex_lock(&mutex_flush);
-				XDrawPoint(dpy, w, gcs[colorIndex], px, py);
-				XFlush(dpy);
-				pthread_mutex_unlock(&mutex_flush);
+		for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE + 2; pixelNumCurrent++) {
+			if (px > SCREEN_WIDTH) {
+				px = 0;
+				py++;
+			} else {
+				px++;
 			}
-			px = 0;
+			x0 = graph.x + (px - SCREEN_WIDTH / 2) * graph.scale;
+			y0 = graph.y + (py - SCREEN_HEIGHT / 2) * graph.scale;
+			x  = x0;
+			y  = y0;
+
+			q = (x0 - 0.25) * (x0 - 0.25) + y0 * y0;
+
+			if ((x0 + 1) * (x0 + 1) + y0 * y0 < 1 / 16 || q * (q + x0 - 0.25) < 0.25 * y0 * y0) {
+				iteration = MAX_ITER;
+			} else {
+				for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
+					xtemp = x * x - y * y + x0;
+					y     = 2 * x * y + y0;
+					x     = xtemp;
+				}
+			}
+
+			colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
+
+			pthread_mutex_lock(&mutex_flush);
+			XDrawPoint(dpy, w, gcs[colorIndex], px, py);
+			XFlush(dpy);
+			pthread_mutex_unlock(&mutex_flush);
 		}
 	}
 }
@@ -135,6 +140,7 @@ void startMandel() {
 		}
 	}
 	printf("done!\n");
+	printf("Zoom level:%Lfe-12\tX:%Lfe-12\tY:%Lfe-12\n", graph.scale * 1E12, graph.x * 1E12, graph.y * 1E12);
 }
 
 int main() {
@@ -142,9 +148,9 @@ int main() {
 
 	XEvent xevent;
 	int    button, mousex, mousey;
-	graph.x     = 0.0;
+	graph.x     = -0.8; // Initial conditions
 	graph.y     = 0.0;
-	graph.scale = 0.02;
+	graph.scale = 0.015;
 
 	dpy = XOpenDisplay(NULL);
 	assert(dpy);
@@ -166,7 +172,9 @@ int main() {
 
 	printf("Building color palette...");
 	palette = malloc(PALETTE_LENGTH * sizeof(XColor));
-	colorGradient(&palette, 0.3, 0.3, 0.3, 0, 2, 4, (1 << 15), (1 << 15), PALETTE_LENGTH);
+	colorGradient(&palette, PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH,
+	              PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH,
+	              PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH, 0, 2, 4, (1 << 15), (1 << 15), PALETTE_LENGTH);
 	printf("done!\n");
 
 	gcs = malloc(PALETTE_LENGTH * sizeof(GC) + 1); // Allocate graphics contexts of PALETTE_LENGTH size + 1 for black
@@ -191,35 +199,22 @@ int main() {
 			XNextEvent(dpy, &xevent); // Blocking
 			switch (xevent.type) {
 				case ButtonPress:
-					switch (xevent.xbutton.button) {
-						case Button1: // Left click
-							mousex = xevent.xbutton.x;
-							mousey = xevent.xbutton.y;
-							button = Button1;
-							break;
+					graph.x += graph.scale * (xevent.xbutton.x - SCREEN_WIDTH / 2);
+					graph.y += graph.scale * (xevent.xbutton.y - SCREEN_HEIGHT / 2);
 
-						case Button3: // Right click
-							mousex = xevent.xbutton.x;
-							mousey = xevent.xbutton.y;
-							button = Button3;
-							break;
-						default:
-							break;
+					if (xevent.xbutton.button == Button1) { // Zoom in
+						graph.scale *= 0.5;
+
+					} else if (xevent.xbutton.button == Button2) { // Zoom out
+						graph.scale /= 0.5;
+					} else if (xevent.xbutton.button == Button3) { // Panning
 					}
+					startMandel();
 					break;
 				default:
 					break;
 			}
 		}
-		graph.x += graph.scale * (mousex - SCREEN_WIDTH / 2);
-		graph.y += graph.scale * (mousey - SCREEN_HEIGHT / 2);
-
-		if (button == Button1) { // Zooming
-			graph.scale *= 0.5;
-		} else if (button == Button3) { // Panning
-		}
-		//printf("\t%f\n%f\t%f\n\t%f\n\tat(%f,%f)\n", graph.maxy, graph.minx, graph.maxx, graph.miny, graph.x, graph.y);
-		startMandel();
 	}
 	XCloseDisplay(dpy);
 	return 0;
