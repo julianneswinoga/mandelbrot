@@ -30,14 +30,6 @@ GRAPH           graph;
 unsigned long   pixelNum;
 pthread_mutex_t mutex_data, mutex_flush;
 
-double scale(double point, double minFrom, double maxFrom, double minTo, double maxTo) {
-	return (((maxTo - minTo) * (point - minFrom)) / (maxFrom - minFrom)) + minTo;
-}
-
-double interpolate(double x, int x0, int y0, int x1, int y1) {
-	return (y0 * (x1 - x) + y1 * (x - x0)) / (x1 - x0);
-}
-
 /**
  * https://krazydad.com/tutorials/makecolors.php
  */
