@@ -12,7 +12,7 @@
 #define PALETTE_LENGTH (1000)
 #define PALETTE_RAINBOWS (6)
 #define MAX_ITER (1000)
-#define NUM_THREADS (8)
+#define NUM_THREADS (1)
 #define THREAD_LINES (2)
 #define SCALE_FACTOR (0.1)
 
@@ -29,7 +29,7 @@ xcb_colormap_t            colormapId;
 xcb_alloc_color_reply_t **colors;
 
 GRAPH           graph;
-int             next_available_line, SCREEN_WIDTH, SCREEN_HEIGHT;
+int             next_available_line, SCREEN_WIDTH, SCREEN_HEIGHT, blocksize;
 pthread_mutex_t mutex_data, mutex_flush;
 
 /**
@@ -58,20 +58,22 @@ void *mandelThread(void *arg) {
 	while (1) {
 		pthread_mutex_lock(&mutex_data);
 		if (next_available_line >= SCREEN_HEIGHT) { // No more work to be done
+			printf("THTHTH: %i, %i\n", next_available_line, SCREEN_HEIGHT);
 			pthread_mutex_unlock(&mutex_data);
 			pthread_exit(NULL);
 			return NULL;
 		} else {
 			lineStart = next_available_line;
-			next_available_line += THREAD_LINES;
+			next_available_line += THREAD_LINES * blocksize;
 		}
 		pthread_mutex_unlock(&mutex_data);
 
 		initialpx = 0;
 		initialpy = lineStart;
 
-		for (py = initialpy; py < initialpy + THREAD_LINES; py++) {
-			for (px = initialpx; px < SCREEN_WIDTH; px++) {
+		for (py = initialpy; py < initialpy + THREAD_LINES * blocksize; py += blocksize) {
+			for (px = initialpx; px < SCREEN_WIDTH; px += blocksize) {
+				printf("x: %i, y: %i\n", px, py);
 				x0 = graph.x + (px - SCREEN_WIDTH / 2) * graph.scale;
 				y0 = graph.y + (py - SCREEN_HEIGHT / 2) * graph.scale;
 				x  = x0;
@@ -91,9 +93,12 @@ void *mandelThread(void *arg) {
 
 				colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
 				pthread_mutex_lock(&mutex_flush);
-				xcb_point_t pt = {.x = px, .y = py};
+				xcb_rectangle_t rect = {.x = px, .y = py, .width = blocksize, .height = blocksize};
 				xcb_change_gc(connection, graphics, XCB_GC_FOREGROUND, &colors[colorIndex]->pixel);
-				xcb_poly_point(connection, XCB_COORD_MODE_ORIGIN, window, graphics, 1, &pt);
+
+				xcb_poly_fill_rectangle(connection, window, graphics, 1, &rect);
+				xcb_flush(connection); // Make sure a flush is called
+				usleep(20 * 1000);
 				pthread_mutex_unlock(&mutex_flush);
 			}
 		}
@@ -101,6 +106,13 @@ void *mandelThread(void *arg) {
 }
 
 void startMandel() {
+
+	xcb_rectangle_t rect = {.x = 0, .y = 0, .width = SCREEN_WIDTH, .height = SCREEN_HEIGHT};
+	xcb_change_gc(connection, graphics, XCB_GC_FOREGROUND, &colors[PALETTE_LENGTH]->pixel);
+
+	xcb_poly_fill_rectangle(connection, window, graphics, 1, &rect);
+	xcb_flush(connection); // Make sure a flush is called
+
 	printf("Building image...");
 	int            threadIds[NUM_THREADS];
 	pthread_attr_t attr;
@@ -141,6 +153,7 @@ int main() {
 	graph.x       = -0.8; // Initial conditions
 	graph.y       = 0.0;
 	graph.scale   = 0.015;
+	blocksize     = SCREEN_WIDTH / 8;
 
 	connection = xcb_connect(NULL, NULL);
 	xcb_generic_event_t * e;
@@ -148,7 +161,7 @@ int main() {
 	xcb_screen_iterator_t iter        = xcb_setup_roots_iterator(setup);
 	xcb_screen_t *        screen      = iter.data;
 	uint32_t              w_mask      = XCB_CW_EVENT_MASK;
-	uint32_t              w_values[1] = {XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_EXPOSURE}; // Generate events when a button is pressed
+	uint32_t              w_values[1] = {XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_RESIZE_REDIRECT}; // Generate events when a button is pressed
 
 	window = xcb_generate_id(connection);
 	xcb_create_window(connection, XCB_COPY_FROM_PARENT, window, screen->root, 0, 0,
@@ -203,6 +216,9 @@ int main() {
 						graph.scale *= 0.5;
 						break;
 					case 2: // Pan with middle click
+						//blocksize /= blocksize == 1 ? 1 : 2;
+						printf("\n\n\n\nBLK: %i\n\n\n\n\n", blocksize);
+						//startMandel();
 						break;
 					case 3: // Zoom out with right click
 						graph.scale /= 0.5;
@@ -212,11 +228,11 @@ int main() {
 				}
 				startMandel();
 			} break;
-			case XCB_EXPOSE: { // Window resized
-				xcb_expose_event_t *ev = (xcb_expose_event_t *)e;
-
-				SCREEN_WIDTH  = ev->width;
-				SCREEN_HEIGHT = ev->height;
+			case XCB_RESIZE_REQUEST: { // Window resized
+				xcb_resize_request_event_t *ev = (xcb_resize_request_event_t *)e;
+				printf("EXPOSE EVENTTTTTTTTTTTTTTTTTTTTTTTTTt%ld\n", ev->window);
+				if (ev->width > 0) SCREEN_WIDTH   = ev->width;
+				if (ev->height > 0) SCREEN_HEIGHT = ev->height;
 			} break;
 			default:
 				printf("Unknown event occured\n");
