@@ -1,4 +1,5 @@
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <assert.h>
 #include <math.h>
 #include <pthread.h>
@@ -14,8 +15,8 @@
 #define PALETTE_LENGTH (1000)
 #define PALETTE_RAINBOWS (6)
 #define MAX_ITER (1000)
-#define NUM_THREADS (8)
-#define THREAD_BLOCKSIZE (123)
+#define NUM_THREADS (1)
+#define THREAD_LINES (2)
 #define SCALE_FACTOR (0.1)
 
 typedef struct {
@@ -30,7 +31,7 @@ GC *            gcs;
 Window          w;
 XColor *        palette;
 GRAPH           graph;
-unsigned long   pixelNum;
+int             next_available_line;
 pthread_mutex_t mutex_data, mutex_flush;
 
 /**
@@ -52,62 +53,61 @@ void *mandelThread(void *arg) {
 
 	long double   x0, y0, x, y, xtemp, iteration, q;
 	unsigned long colorIndex;
-	unsigned long pixelNumStart, pixelNumCurrent;
+	int           lineStart;
+	int           py, px, initialpx, initialpy;
+	XImage *      xi;
+	char *        data = malloc(SCREEN_WIDTH * 2);
+
+	xi = XCreateImage(dpy, CopyFromParent, 24, ZPixmap, 0, data, SCREEN_WIDTH, 2, 32, 0);
 
 	while (1) {
 		pthread_mutex_lock(&mutex_data);
-		if (pixelNum >= SCREEN_WIDTH * SCREEN_HEIGHT) { // No more work to be done
+		if (next_available_line >= SCREEN_HEIGHT) { // No more work to be done
 			pthread_mutex_unlock(&mutex_data);
 			pthread_exit(NULL);
 			return NULL;
 		} else {
-			pixelNumStart   = pixelNum;
-			pixelNumCurrent = pixelNum;
-			pixelNum += THREAD_BLOCKSIZE;
+			lineStart = next_available_line;
+			next_available_line += THREAD_LINES;
 		}
 		pthread_mutex_unlock(&mutex_data);
 
-		int  py, px;
-		long I = pixelNumStart;
-		for (py = 0; py < SCREEN_HEIGHT && I - SCREEN_HEIGHT > 0; py++) {
-			I -= SCREEN_HEIGHT;
-		}
+		initialpx = 0;
+		initialpy = lineStart;
 
-		for (px = 0; px < SCREEN_WIDTH && I > 0; px++) {
-			I--;
-		}
+		for (py = initialpy; py < initialpy + THREAD_LINES; py++) {
+			for (px = initialpx; px < SCREEN_WIDTH; px++) {
+				x0 = graph.x + (px - SCREEN_WIDTH / 2) * graph.scale;
+				y0 = graph.y + (py - SCREEN_HEIGHT / 2) * graph.scale;
+				x  = x0;
+				y  = y0;
 
-		for (; pixelNumCurrent < pixelNumStart + THREAD_BLOCKSIZE + 2; pixelNumCurrent++) {
-			if (px > SCREEN_WIDTH) {
-				px = 0;
-				py++;
-			} else {
-				px++;
-			}
-			x0 = graph.x + (px - SCREEN_WIDTH / 2) * graph.scale;
-			y0 = graph.y + (py - SCREEN_HEIGHT / 2) * graph.scale;
-			x  = x0;
-			y  = y0;
+				q = (x0 - 0.25) * (x0 - 0.25) + y0 * y0;
 
-			q = (x0 - 0.25) * (x0 - 0.25) + y0 * y0;
-
-			if ((x0 + 1) * (x0 + 1) + y0 * y0 < 1 / 16 || q * (q + x0 - 0.25) < 0.25 * y0 * y0) {
-				iteration = MAX_ITER;
-			} else {
-				for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
-					xtemp = x * x - y * y + x0;
-					y     = 2 * x * y + y0;
-					x     = xtemp;
+				if ((x0 + 1) * (x0 + 1) + y0 * y0 < 1 / 16 || q * (q + x0 - 0.25) < 0.25 * y0 * y0) {
+					iteration = MAX_ITER;
+				} else {
+					for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
+						xtemp = x * x - y * y + x0;
+						y     = 2 * x * y + y0;
+						x     = xtemp;
+					}
 				}
+
+				colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
+
+				pthread_mutex_lock(&mutex_flush);
+				XDrawPoint(dpy, w, gcs[colorIndex], px, py);
+				XFlush(dpy);
+				pthread_mutex_unlock(&mutex_flush);
+
+				// printf("%i %i", px, py);
+				// XPutPixel(xi, px, py, palette[colorIndex].pixel);
+				// printf("A\n");
 			}
-
-			colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
-
-			pthread_mutex_lock(&mutex_flush);
-			XDrawPoint(dpy, w, gcs[colorIndex], px, py);
-			XFlush(dpy);
-			pthread_mutex_unlock(&mutex_flush);
 		}
+		// XPutImage(dpy, w, gcs[0], xi, 0, 0, initialpx, initialpy, SCREEN_WIDTH, 2);
+		// XFlush(dpy);
 	}
 }
 
@@ -121,7 +121,7 @@ void startMandel() {
 	pthread_mutex_init(&mutex_flush, NULL); // Init mutex for flushing
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-	pixelNum = 0;
+	next_available_line = 0;
 
 	for (int i = 0; i < NUM_THREADS; i++) { // Create threads
 		threadIds[i] = i;
@@ -147,7 +147,7 @@ int main() {
 	printf("Building X11 window...");
 
 	XEvent xevent;
-	int    button, mousex, mousey;
+	int    mousex, mousey;
 	graph.x     = -0.8; // Initial conditions
 	graph.y     = 0.0;
 	graph.scale = 0.015;
