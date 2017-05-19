@@ -1,17 +1,16 @@
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <assert.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <xcb/xcb.h>
 
 #define M_PI 3.14159265358979323846
 
 #define SCREEN_WIDTH (200)
 #define SCREEN_HEIGHT (200)
+#define BORDER_WIDTH (10)
 #define PALETTE_LENGTH (1000)
 #define PALETTE_RAINBOWS (6)
 #define MAX_ITER (1000)
@@ -25,11 +24,12 @@ typedef struct {
 	long double scale;
 } GRAPH;
 
-Display *       dpy;
-Colormap        screen_colormap;
-GC *            gcs;
-Window          w;
-XColor *        palette;
+xcb_connection_t *        connection;
+xcb_window_t              window;
+xcb_gcontext_t            graphics;
+xcb_colormap_t            colormapId;
+xcb_alloc_color_reply_t **colors;
+
 GRAPH           graph;
 int             next_available_line;
 pthread_mutex_t mutex_data, mutex_flush;
@@ -37,13 +37,14 @@ pthread_mutex_t mutex_data, mutex_flush;
 /**
  * https://krazydad.com/tutorials/makecolors.php
  */
-void colorGradient(XColor **pal, double f1, double f2, double f3, double p1, double p2, double p3, double center, double width, int len) {
+void colorGradient(xcb_alloc_color_reply_t ***crs, double f1, double f2, double f3, double p1, double p2, double p3, double center, double width, int len) {
 	for (int i = 0; i < len; i++) {
-		(*pal)[i].red   = sin(f1 * i + p1) * width + center;
-		(*pal)[i].green = sin(f2 * i + p2) * width + center;
-		(*pal)[i].blue  = sin(f3 * i + p3) * width + center;
-		(*pal)[i].flags = DoRed | DoGreen | DoBlue;
-		XAllocColor(dpy, screen_colormap, &((*pal)[i]));
+		(*crs)[i] = xcb_alloc_color_reply(connection,
+		                                  xcb_alloc_color(connection, colormapId,
+		                                                  sin(f1 * i + p1) * width + center,
+		                                                  sin(f2 * i + p2) * width + center,
+		                                                  sin(f3 * i + p3) * width + center),
+		                                  NULL);
 	}
 }
 
@@ -55,15 +56,12 @@ void *mandelThread(void *arg) {
 	unsigned long colorIndex;
 	int           lineStart;
 	int           py, px, initialpx, initialpy;
-	XImage *      xi;
-	char *        data = malloc(SCREEN_WIDTH * 2);
-
-	xi = XCreateImage(dpy, CopyFromParent, 24, ZPixmap, 0, data, SCREEN_WIDTH, 2, 32, 0);
 
 	while (1) {
 		pthread_mutex_lock(&mutex_data);
 		if (next_available_line >= SCREEN_HEIGHT) { // No more work to be done
 			pthread_mutex_unlock(&mutex_data);
+			xcb_flush(connection);
 			pthread_exit(NULL);
 			return NULL;
 		} else {
@@ -95,19 +93,13 @@ void *mandelThread(void *arg) {
 				}
 
 				colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
-
 				pthread_mutex_lock(&mutex_flush);
-				XDrawPoint(dpy, w, gcs[colorIndex], px, py);
-				XFlush(dpy);
+				xcb_point_t pt = {.x = px, .y = py};
+				xcb_change_gc(connection, graphics, XCB_GC_FOREGROUND, &colors[colorIndex]->pixel);
+				xcb_poly_point(connection, XCB_COORD_MODE_ORIGIN, window, graphics, 1, &pt);
 				pthread_mutex_unlock(&mutex_flush);
-
-				// printf("%i %i", px, py);
-				// XPutPixel(xi, px, py, palette[colorIndex].pixel);
-				// printf("A\n");
 			}
 		}
-		// XPutImage(dpy, w, gcs[0], xi, 0, 0, initialpx, initialpy, SCREEN_WIDTH, 2);
-		// XFlush(dpy);
 	}
 }
 
@@ -146,76 +138,86 @@ void startMandel() {
 int main() {
 	printf("Building X11 window...");
 
-	XEvent xevent;
-	int    mousex, mousey;
 	graph.x     = -0.8; // Initial conditions
 	graph.y     = 0.0;
 	graph.scale = 0.015;
 
-	dpy = XOpenDisplay(NULL);
-	assert(dpy);
+	connection = xcb_connect(NULL, NULL);
+	xcb_generic_event_t * e;
+	const xcb_setup_t *   setup       = xcb_get_setup(connection);
+	xcb_screen_iterator_t iter        = xcb_setup_roots_iterator(setup);
+	xcb_screen_t *        screen      = iter.data;
+	uint32_t              w_mask      = XCB_CW_EVENT_MASK;
+	uint32_t              w_values[1] = {XCB_EVENT_MASK_BUTTON_PRESS}; // Generate events when a button is pressed
 
-	int blackColor  = BlackPixel(dpy, DefaultScreen(dpy));
-	screen_colormap = DefaultColormap(dpy, DefaultScreen(dpy));
+	window = xcb_generate_id(connection);
+	xcb_create_window(connection, XCB_COPY_FROM_PARENT, window, screen->root, 0, 0,
+	                  SCREEN_WIDTH, SCREEN_HEIGHT, BORDER_WIDTH, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen->root_visual, w_mask, w_values);
+	xcb_map_window(connection, window);
 
-	w = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, blackColor, blackColor);
+	graphics             = xcb_generate_id(connection);
+	uint32_t g_mask      = XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES;
+	uint32_t g_values[2] = {screen->black_pixel, 0};
+	xcb_create_gc(connection, graphics, window, g_mask, g_values);
 
-	XSelectInput(dpy, w, StructureNotifyMask); // We want to get MapNotify events
-	XMapWindow(dpy, w);                        // "Map" the window (that is, make it appear on the screen)
-
-	while (1) { // Wait for the MapNotify event
-		XNextEvent(dpy, &xevent);
-		if (xevent.type == MapNotify)
-			break;
-	}
-	printf("done!\n");
+	colormapId = xcb_generate_id(connection);
+	xcb_create_colormap(connection,
+	                    XCB_COLORMAP_ALLOC_NONE,
+	                    colormapId,
+	                    window,
+	                    screen->root_visual);
 
 	printf("Building color palette...");
-	palette = malloc(PALETTE_LENGTH * sizeof(XColor));
-	colorGradient(&palette, PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH,
+	colors = malloc(PALETTE_LENGTH * sizeof(xcb_alloc_color_reply_t) + 1); // Allocate memory +1 for black
+	colorGradient(&colors, PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH,
 	              PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH,
 	              PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH, 0, 2, 4, (1 << 15), (1 << 15), PALETTE_LENGTH);
+
+	colors[PALETTE_LENGTH] = xcb_alloc_color_reply(connection, xcb_alloc_color(connection, colormapId, 0, 0, 0), NULL);
+
 	printf("done!\n");
 
-	gcs = malloc(PALETTE_LENGTH * sizeof(GC) + 1); // Allocate graphics contexts of PALETTE_LENGTH size + 1 for black
-	XGCValues xgcv;
+	xcb_rectangle_t rect;
 	for (int i = 0; i < PALETTE_LENGTH; i++) {
-		xgcv.foreground = palette[i].pixel;
-		gcs[i]          = XCreateGC(dpy, w, GCForeground, &xgcv);
-		XFillRectangle(dpy, w, gcs[i], (int)(i * (1.0 * SCREEN_WIDTH / PALETTE_LENGTH)), 0, (int)(1.0 * SCREEN_WIDTH / PALETTE_LENGTH) + 1, SCREEN_HEIGHT - 1);
+		xcb_change_gc(connection, graphics, XCB_GC_FOREGROUND, &colors[i]->pixel);
+		rect.x      = (int16_t)(i * (1.0 * SCREEN_WIDTH / PALETTE_LENGTH));
+		rect.y      = 0;
+		rect.width  = (uint16_t)(1.0 * SCREEN_WIDTH / PALETTE_LENGTH) + 1;
+		rect.height = SCREEN_HEIGHT;
+		xcb_poly_fill_rectangle(connection, window, graphics, 1, &rect);
+		xcb_flush(connection);
 	}
-	gcs[PALETTE_LENGTH] = XCreateGC(dpy, w, 0, NULL); // Set last color to black
-	XFlush(dpy);
 
 	sleep(3);
 
 	startMandel(); // Initial mandelbrot
 
-	XSelectInput(dpy, w, ButtonPressMask);
-	while (1) {
-		mousex = -1;
-		mousey = -1;
-		while (mousex <= 0 && mousey <= 0) {
-			XNextEvent(dpy, &xevent); // Blocking
-			switch (xevent.type) {
-				case ButtonPress:
-					graph.x += graph.scale * (xevent.xbutton.x - SCREEN_WIDTH / 2);
-					graph.y += graph.scale * (xevent.xbutton.y - SCREEN_HEIGHT / 2);
-
-					if (xevent.xbutton.button == Button1) { // Zoom in
+	while ((e = xcb_wait_for_event(connection))) {
+		switch (e->response_type & ~0x80) {
+			case XCB_BUTTON_PRESS: {
+				xcb_button_press_event_t *ev = (xcb_button_press_event_t *)e;
+				graph.x += graph.scale * (ev->event_x - SCREEN_WIDTH / 2);
+				graph.y += graph.scale * (ev->event_y - SCREEN_HEIGHT / 2);
+				switch (ev->detail) {
+					case 1: // Zoom in on left click
 						graph.scale *= 0.5;
-
-					} else if (xevent.xbutton.button == Button2) { // Zoom out
+						break;
+					case 2: // Pan with middle click
+						break;
+					case 3: // Zoom out with right click
 						graph.scale /= 0.5;
-					} else if (xevent.xbutton.button == Button3) { // Panning
-					}
-					startMandel();
-					break;
-				default:
-					break;
-			}
+						break;
+					default:
+						break;
+				}
+				startMandel();
+			} break;
+			default:
+				printf("Unknown event occured\n");
+				break;
 		}
 	}
-	XCloseDisplay(dpy);
+
+	xcb_disconnect(connection);
 	return 0;
 }
