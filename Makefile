@@ -1,5 +1,5 @@
 TARGET = mandelbrot
-LIBS = -lm -lX11 -lpthread
+LIBS = -lm -lxcb -lpthread
 CFLAGS = -g -Wall -std=c99 -pthread
 
 .PHONY: default all clean
