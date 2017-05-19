@@ -8,13 +8,13 @@
 
 #define M_PI 3.14159265358979323846
 
-#define SCREEN_WIDTH (200)
-#define SCREEN_HEIGHT (200)
+#define SCREEN_WIDTH (800)
+#define SCREEN_HEIGHT (800)
 #define BORDER_WIDTH (10)
 #define PALETTE_LENGTH (1000)
 #define PALETTE_RAINBOWS (6)
 #define MAX_ITER (1000)
-#define NUM_THREADS (1)
+#define NUM_THREADS (8)
 #define THREAD_LINES (2)
 #define SCALE_FACTOR (0.1)
 
@@ -61,7 +61,6 @@ void *mandelThread(void *arg) {
 		pthread_mutex_lock(&mutex_data);
 		if (next_available_line >= SCREEN_HEIGHT) { // No more work to be done
 			pthread_mutex_unlock(&mutex_data);
-			xcb_flush(connection);
 			pthread_exit(NULL);
 			return NULL;
 		} else {
@@ -119,6 +118,7 @@ void startMandel() {
 		threadIds[i] = i;
 		pthread_create(&threads[i], &attr, mandelThread, (void *)(uintptr_t)threadIds[i]);
 	}
+	xcb_flush(connection); // Make sure a flush is called
 
 	pthread_attr_destroy(&attr);
 
