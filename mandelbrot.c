@@ -73,7 +73,7 @@ void *mandelThread(void *arg) {
 
 		for (py = initialpy; py < initialpy + THREAD_LINES * blocksize; py += blocksize) {
 			for (px = initialpx; px < SCREEN_WIDTH; px += blocksize) {
-				printf("x: %i, y: %i\n", px, py);
+				//printf("x: %i, y: %i\n", px, py);
 				x0 = graph.x + (px - SCREEN_WIDTH / 2) * graph.scale;
 				y0 = graph.y + (py - SCREEN_HEIGHT / 2) * graph.scale;
 				x  = x0;
@@ -217,7 +217,7 @@ int main() {
 						break;
 					case 2: // Pan with middle click
 						//blocksize /= blocksize == 1 ? 1 : 2;
-						printf("\n\n\n\nBLK: %i\n\n\n\n\n", blocksize);
+						printf("BLK: %i\n", blocksize);
 						//startMandel();
 						break;
 					case 3: // Zoom out with right click
@@ -229,10 +229,13 @@ int main() {
 				startMandel();
 			} break;
 			case XCB_RESIZE_REQUEST: { // Window resized
-				xcb_resize_request_event_t *ev = (xcb_resize_request_event_t *)e;
-				printf("EXPOSE EVENTTTTTTTTTTTTTTTTTTTTTTTTTt%ld\n", ev->window);
+				xcb_resize_request_event_t *ev    = (xcb_resize_request_event_t *)e;
 				if (ev->width > 0) SCREEN_WIDTH   = ev->width;
 				if (ev->height > 0) SCREEN_HEIGHT = ev->height;
+				printf("EXPOSE EVENT%ld, %ix%i\n", ev->window, SCREEN_WIDTH, SCREEN_HEIGHT);
+				uint32_t values[] = {SCREEN_WIDTH, SCREEN_HEIGHT};
+				/* Resize the window to width = 200 and height = 300 */
+				xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
 			} break;
 			default:
 				printf("Unknown event occured\n");
