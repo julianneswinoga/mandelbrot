@@ -1,5 +1,6 @@
 #include <math.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,9 +13,10 @@
 #define PALETTE_LENGTH (1000)
 #define PALETTE_RAINBOWS (6)
 #define MAX_ITER (1000)
-#define NUM_THREADS (1)
+#define NUM_THREADS (8)
 #define THREAD_LINES (2)
 #define SCALE_FACTOR (0.1)
+#define INITIAL_BLOCKSIZE (SCREEN_WIDTH / 4)
 
 typedef struct {
 	long double x;
@@ -30,7 +32,11 @@ xcb_alloc_color_reply_t **colors;
 
 GRAPH           graph;
 int             next_available_line, SCREEN_WIDTH, SCREEN_HEIGHT, blocksize;
-pthread_mutex_t mutex_data, mutex_flush;
+pthread_mutex_t mutex_nextline, mutex_flush, mutex_phaseComplete;
+pthread_cond_t  condition_phaseComplete;
+bool            threadWorkDone[NUM_THREADS] = {
+    0,
+};
 
 /**
  * https://krazydad.com/tutorials/makecolors.php
@@ -46,6 +52,14 @@ void colorGradient(xcb_alloc_color_reply_t ***crs, double f1, double f2, double 
 	}
 }
 
+bool allThreadsComplete() {
+	for (int i = 0; i < NUM_THREADS; i++) {
+		if (!threadWorkDone[i])
+			return false;
+	}
+	return true;
+}
+
 void *mandelThread(void *arg) {
 	int threadNumber = (int)(uintptr_t)arg;
 	printf("Thread #%i created\n", threadNumber);
@@ -56,24 +70,37 @@ void *mandelThread(void *arg) {
 	int           py, px, initialpx, initialpy;
 
 	while (1) {
-		pthread_mutex_lock(&mutex_data);
 		if (next_available_line >= SCREEN_HEIGHT) { // No more work to be done
-			printf("THTHTH: %i, %i\n", next_available_line, SCREEN_HEIGHT);
-			pthread_mutex_unlock(&mutex_data);
-			pthread_exit(NULL);
-			return NULL;
-		} else {
-			lineStart = next_available_line;
-			next_available_line += THREAD_LINES * blocksize;
+			if (blocksize > 1) {
+				threadWorkDone[threadNumber] = true;
+				if (!allThreadsComplete()) { // Threads are still working, so wait
+					pthread_mutex_lock(&mutex_phaseComplete);
+					pthread_cond_wait(&condition_phaseComplete,
+					                  &mutex_phaseComplete); // Wait for phases to complete
+					pthread_mutex_unlock(&mutex_phaseComplete);
+				} else {
+					for (size_t i = 0; i < NUM_THREADS; i++) threadWorkDone[i] = false; // Reset thread work
+
+					blocksize           = (blocksize / 2 > 1 ? blocksize / 2 : 1);
+					next_available_line = 0;
+					pthread_cond_broadcast(&condition_phaseComplete); // Broadcast that we can proceed
+				}
+
+			} else { // Blocksize is 1
+				pthread_exit(NULL);
+				return NULL;
+			}
 		}
-		pthread_mutex_unlock(&mutex_data);
+		pthread_mutex_lock(&mutex_nextline);
+		lineStart = next_available_line;
+		next_available_line += THREAD_LINES * blocksize;
+		pthread_mutex_unlock(&mutex_nextline);
 
 		initialpx = 0;
 		initialpy = lineStart;
 
 		for (py = initialpy; py < initialpy + THREAD_LINES * blocksize; py += blocksize) {
 			for (px = initialpx; px < SCREEN_WIDTH; px += blocksize) {
-				//printf("x: %i, y: %i\n", px, py);
 				x0 = graph.x + (px - SCREEN_WIDTH / 2) * graph.scale;
 				y0 = graph.y + (py - SCREEN_HEIGHT / 2) * graph.scale;
 				x  = x0;
@@ -98,7 +125,7 @@ void *mandelThread(void *arg) {
 
 				xcb_poly_fill_rectangle(connection, window, graphics, 1, &rect);
 				xcb_flush(connection); // Make sure a flush is called
-				usleep(20 * 1000);
+				//usleep(10 * 1000);
 				pthread_mutex_unlock(&mutex_flush);
 			}
 		}
@@ -118,11 +145,14 @@ void startMandel() {
 	pthread_attr_t attr;
 	pthread_t      threads[NUM_THREADS];
 
-	pthread_mutex_init(&mutex_data, NULL);  // Init mutex for data
-	pthread_mutex_init(&mutex_flush, NULL); // Init mutex for flushing
+	pthread_mutex_init(&mutex_nextline, NULL);         // Init mutex for data
+	pthread_mutex_init(&mutex_flush, NULL);            // Init mutex for flushing
+	pthread_mutex_init(&mutex_phaseComplete, NULL);    // Init mutex for phase complete
+	pthread_cond_init(&condition_phaseComplete, NULL); // Init condition for phase complete
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 	next_available_line = 0;
+	blocksize           = INITIAL_BLOCKSIZE; // Reset the blocksize
 
 	for (int i = 0; i < NUM_THREADS; i++) { // Create threads
 		threadIds[i] = i;
@@ -148,12 +178,12 @@ void startMandel() {
 int main() {
 	printf("Building X11 window...");
 
-	SCREEN_WIDTH  = 300;
-	SCREEN_HEIGHT = 300;
+	SCREEN_WIDTH  = 200;
+	SCREEN_HEIGHT = 200;
 	graph.x       = -0.8; // Initial conditions
 	graph.y       = 0.0;
 	graph.scale   = 0.015;
-	blocksize     = SCREEN_WIDTH / 8;
+	blocksize     = INITIAL_BLOCKSIZE;
 
 	connection = xcb_connect(NULL, NULL);
 	xcb_generic_event_t * e;
@@ -232,9 +262,9 @@ int main() {
 				xcb_resize_request_event_t *ev    = (xcb_resize_request_event_t *)e;
 				if (ev->width > 0) SCREEN_WIDTH   = ev->width;
 				if (ev->height > 0) SCREEN_HEIGHT = ev->height;
+
 				printf("EXPOSE EVENT%ld, %ix%i\n", ev->window, SCREEN_WIDTH, SCREEN_HEIGHT);
 				uint32_t values[] = {SCREEN_WIDTH, SCREEN_HEIGHT};
-				/* Resize the window to width = 200 and height = 300 */
 				xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
 			} break;
 			default:
