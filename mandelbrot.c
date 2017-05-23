@@ -29,14 +29,18 @@ xcb_window_t              window;
 xcb_gcontext_t            graphics;
 xcb_colormap_t            colormapId;
 xcb_alloc_color_reply_t **colors;
+xcb_generic_event_t *     e;
 
 GRAPH           graph;
 int             next_available_line, SCREEN_WIDTH, SCREEN_HEIGHT, blocksize;
-pthread_mutex_t mutex_nextline, mutex_flush, mutex_phaseComplete;
+pthread_mutex_t mutex_nextline, mutex_draw, mutex_phaseComplete;
 pthread_cond_t  condition_phaseComplete;
+bool            thread_exit_premature;
 bool            threadWorkDone[NUM_THREADS] = {
     0,
 };
+
+void event_action(xcb_generic_event_t *);
 
 /**
  * https://krazydad.com/tutorials/makecolors.php
@@ -85,8 +89,8 @@ void *mandelThread(void *arg) {
 					next_available_line = 0;
 					pthread_cond_broadcast(&condition_phaseComplete); // Broadcast that we can proceed
 				}
-
-			} else { // Blocksize is 1
+			} else {                   // Blocksize is 1
+				xcb_flush(connection); // Make sure a flush is called
 				pthread_exit(NULL);
 				return NULL;
 			}
@@ -111,7 +115,7 @@ void *mandelThread(void *arg) {
 				if ((x0 + 1) * (x0 + 1) + y0 * y0 < 1 / 16 || q * (q + x0 - 0.25) < 0.25 * y0 * y0) {
 					iteration = MAX_ITER;
 				} else {
-					for (iteration = 0; x * x + y * y < (1 << 16) && iteration < MAX_ITER; iteration++) {
+					for (iteration = 0; x * x + y * y < (1 << 10) && iteration < MAX_ITER; iteration++) {
 						xtemp = x * x - y * y + x0;
 						y     = 2 * x * y + y0;
 						x     = xtemp;
@@ -119,14 +123,22 @@ void *mandelThread(void *arg) {
 				}
 
 				colorIndex = (unsigned long)(iteration / MAX_ITER * PALETTE_LENGTH);
-				pthread_mutex_lock(&mutex_flush);
-				xcb_rectangle_t rect = {.x = px, .y = py, .width = blocksize, .height = blocksize};
-				xcb_change_gc(connection, graphics, XCB_GC_FOREGROUND, &colors[colorIndex]->pixel);
 
+				xcb_rectangle_t rect = {.x = px, .y = py, .width = blocksize, .height = blocksize};
+
+				pthread_mutex_lock(&mutex_draw);
+				xcb_change_gc(connection, graphics, XCB_GC_FOREGROUND, &colors[colorIndex]->pixel); // Change the color
 				xcb_poly_fill_rectangle(connection, window, graphics, 1, &rect);
-				xcb_flush(connection); // Make sure a flush is called
-				//usleep(10 * 1000);
-				pthread_mutex_unlock(&mutex_flush);
+				pthread_mutex_unlock(&mutex_draw);
+			}
+			if (thread_exit_premature) {
+				pthread_exit(NULL); // Say that we have an event to handle
+				return NULL;
+			}
+			if ((e = xcb_poll_for_event(connection)) != NULL) { // Check every row for an event
+				thread_exit_premature = true;
+				pthread_exit(1); // Say that we have an event to handle
+				return NULL;
 			}
 		}
 	}
@@ -146,13 +158,14 @@ void startMandel() {
 	pthread_t      threads[NUM_THREADS];
 
 	pthread_mutex_init(&mutex_nextline, NULL);         // Init mutex for data
-	pthread_mutex_init(&mutex_flush, NULL);            // Init mutex for flushing
+	pthread_mutex_init(&mutex_draw, NULL);             // Init mutex for flushing
 	pthread_mutex_init(&mutex_phaseComplete, NULL);    // Init mutex for phase complete
 	pthread_cond_init(&condition_phaseComplete, NULL); // Init condition for phase complete
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-	next_available_line = 0;
-	blocksize           = INITIAL_BLOCKSIZE; // Reset the blocksize
+	next_available_line   = 0;
+	blocksize             = INITIAL_BLOCKSIZE; // Reset the blocksize
+	thread_exit_premature = false;
 
 	for (int i = 0; i < NUM_THREADS; i++) { // Create threads
 		threadIds[i] = i;
@@ -167,12 +180,50 @@ void startMandel() {
 		pthread_join(threads[i], &status);
 
 		if (status != 0) {
+			event_action(e); // Handle the pending event
 			printf("Thread #%i exited with %i\n", i, (int)(uintptr_t)status);
-			exit(1);
 		}
 	}
 	printf("done!\n");
 	printf("Zoom level:%Lfe-12\tX:%Lfe-12\tY:%Lfe-12\n", graph.scale * 1E12, graph.x * 1E12, graph.y * 1E12);
+}
+
+void event_action(xcb_generic_event_t *e) {
+	switch (e->response_type & ~0x80) {
+		case XCB_BUTTON_PRESS: {
+			xcb_button_press_event_t *ev = (xcb_button_press_event_t *)e;
+			graph.x += graph.scale * (ev->event_x - SCREEN_WIDTH / 2);
+			graph.y += graph.scale * (ev->event_y - SCREEN_HEIGHT / 2);
+			switch (ev->detail) {
+				case 1: // Zoom in on left click
+					graph.scale *= 0.5;
+					break;
+				case 2: // Pan with middle click
+					//blocksize /= blocksize == 1 ? 1 : 2;
+					printf("BLK: %i\n", blocksize);
+					//startMandel();
+					break;
+				case 3: // Zoom out with right click
+					graph.scale /= 0.5;
+					break;
+				default:
+					break;
+			}
+			startMandel();
+		} break;
+		case XCB_RESIZE_REQUEST: { // Window resized
+			xcb_resize_request_event_t *ev    = (xcb_resize_request_event_t *)e;
+			if (ev->width > 0) SCREEN_WIDTH   = ev->width;
+			if (ev->height > 0) SCREEN_HEIGHT = ev->height;
+
+			printf("EXPOSE EVENT%ld, %ix%i\n", ev->window, SCREEN_WIDTH, SCREEN_HEIGHT);
+			uint32_t values[] = {SCREEN_WIDTH, SCREEN_HEIGHT};
+			xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
+		} break;
+		default:
+			printf("Unknown event occured\n");
+			break;
+	}
 }
 
 int main() {
@@ -185,8 +236,7 @@ int main() {
 	graph.scale   = 0.015;
 	blocksize     = INITIAL_BLOCKSIZE;
 
-	connection = xcb_connect(NULL, NULL);
-	xcb_generic_event_t * e;
+	connection                        = xcb_connect(NULL, NULL);
 	const xcb_setup_t *   setup       = xcb_get_setup(connection);
 	xcb_screen_iterator_t iter        = xcb_setup_roots_iterator(setup);
 	xcb_screen_t *        screen      = iter.data;
@@ -236,41 +286,7 @@ int main() {
 	startMandel(); // Initial mandelbrot
 
 	while ((e = xcb_wait_for_event(connection))) {
-		switch (e->response_type & ~0x80) {
-			case XCB_BUTTON_PRESS: {
-				xcb_button_press_event_t *ev = (xcb_button_press_event_t *)e;
-				graph.x += graph.scale * (ev->event_x - SCREEN_WIDTH / 2);
-				graph.y += graph.scale * (ev->event_y - SCREEN_HEIGHT / 2);
-				switch (ev->detail) {
-					case 1: // Zoom in on left click
-						graph.scale *= 0.5;
-						break;
-					case 2: // Pan with middle click
-						//blocksize /= blocksize == 1 ? 1 : 2;
-						printf("BLK: %i\n", blocksize);
-						//startMandel();
-						break;
-					case 3: // Zoom out with right click
-						graph.scale /= 0.5;
-						break;
-					default:
-						break;
-				}
-				startMandel();
-			} break;
-			case XCB_RESIZE_REQUEST: { // Window resized
-				xcb_resize_request_event_t *ev    = (xcb_resize_request_event_t *)e;
-				if (ev->width > 0) SCREEN_WIDTH   = ev->width;
-				if (ev->height > 0) SCREEN_HEIGHT = ev->height;
-
-				printf("EXPOSE EVENT%ld, %ix%i\n", ev->window, SCREEN_WIDTH, SCREEN_HEIGHT);
-				uint32_t values[] = {SCREEN_WIDTH, SCREEN_HEIGHT};
-				xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
-			} break;
-			default:
-				printf("Unknown event occured\n");
-				break;
-		}
+		event_action(e);
 	}
 
 	xcb_disconnect(connection);
