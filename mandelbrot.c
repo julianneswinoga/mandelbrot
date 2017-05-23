@@ -1,46 +1,4 @@
-#include <math.h>
-#include <pthread.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <xcb/xcb.h>
-
-#define M_PI 3.14159265358979323846
-
-#define BORDER_WIDTH (10)
-#define PALETTE_LENGTH (1000)
-#define PALETTE_RAINBOWS (6)
-#define MAX_ITER (1000)
-#define NUM_THREADS (8)
-#define THREAD_LINES (2)
-#define SCALE_FACTOR (0.1)
-#define INITIAL_BLOCKSIZE (SCREEN_WIDTH / 4)
-
-typedef struct {
-	long double x;
-	long double y;
-	long double scale;
-} GRAPH;
-
-xcb_connection_t *        connection;
-xcb_window_t              window;
-xcb_gcontext_t            graphics;
-xcb_colormap_t            colormapId;
-xcb_alloc_color_reply_t **colors;
-xcb_generic_event_t *     e;
-
-GRAPH           graph;
-int             next_available_line, SCREEN_WIDTH, SCREEN_HEIGHT, blocksize;
-pthread_mutex_t mutex_nextline, mutex_draw, mutex_phaseComplete;
-pthread_cond_t  condition_phaseComplete;
-bool            thread_exit_premature;
-bool            threadWorkDone[NUM_THREADS] = {
-    0,
-};
-
-void event_action(xcb_generic_event_t *);
+#include "mandelbrot.h"
 
 /**
  * https://krazydad.com/tutorials/makecolors.php
@@ -137,7 +95,7 @@ void *mandelThread(void *arg) {
 			}
 			if ((e = xcb_poll_for_event(connection)) != NULL) { // Check every row for an event
 				thread_exit_premature = true;
-				pthread_exit(1); // Say that we have an event to handle
+				pthread_exit((void *)1); // Say that we have an event to handle
 				return NULL;
 			}
 		}
@@ -145,11 +103,6 @@ void *mandelThread(void *arg) {
 }
 
 void startMandel() {
-
-	xcb_rectangle_t rect = {.x = 0, .y = 0, .width = SCREEN_WIDTH, .height = SCREEN_HEIGHT};
-	xcb_change_gc(connection, graphics, XCB_GC_FOREGROUND, &colors[PALETTE_LENGTH]->pixel);
-
-	xcb_poly_fill_rectangle(connection, window, graphics, 1, &rect);
 	xcb_flush(connection); // Make sure a flush is called
 
 	printf("Building image...");
@@ -227,14 +180,14 @@ void event_action(xcb_generic_event_t *e) {
 }
 
 int main() {
-	printf("Building X11 window...");
-
-	SCREEN_WIDTH  = 200;
+	SCREEN_WIDTH  = 200; // Initial conditions
 	SCREEN_HEIGHT = 200;
-	graph.x       = -0.8; // Initial conditions
+	graph.x       = -0.8;
 	graph.y       = 0.0;
 	graph.scale   = 0.015;
 	blocksize     = INITIAL_BLOCKSIZE;
+
+	printf("Building X11 window...");
 
 	connection                        = xcb_connect(NULL, NULL);
 	const xcb_setup_t *   setup       = xcb_get_setup(connection);
