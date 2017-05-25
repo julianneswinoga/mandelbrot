@@ -169,7 +169,6 @@ void event_action(xcb_generic_event_t *e) {
 			if (ev->width > 0) SCREEN_WIDTH   = ev->width;
 			if (ev->height > 0) SCREEN_HEIGHT = ev->height;
 
-			printf("EXPOSE EVENT%ld, %ix%i\n", ev->window, SCREEN_WIDTH, SCREEN_HEIGHT);
 			uint32_t values[] = {SCREEN_WIDTH, SCREEN_HEIGHT};
 			xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
 		} break;
