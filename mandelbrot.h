@@ -28,6 +28,7 @@ typedef struct {
 } GRAPH;
 
 xcb_connection_t *        connection;
+xcb_screen_t *            screen;
 xcb_window_t              window;
 xcb_gcontext_t            graphics;
 xcb_colormap_t            colormapId;
