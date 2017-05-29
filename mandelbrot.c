@@ -152,9 +152,6 @@ void event_action(xcb_generic_event_t *e) {
 					graph.scale *= 0.5;
 					break;
 				case 2: // Pan with middle click
-					//blocksize /= blocksize == 1 ? 1 : 2;
-					printf("BLK: %i\n", blocksize);
-					//startMandel();
 					break;
 				case 3: // Zoom out with right click
 					graph.scale /= 0.5;
@@ -167,13 +164,11 @@ void event_action(xcb_generic_event_t *e) {
 		case XCB_RESIZE_REQUEST: { // Window resized
 			xcb_resize_request_event_t *ev    = (xcb_resize_request_event_t *)e;
 			if (ev->width > 0) SCREEN_WIDTH   = ev->width;
-			if (ev->height > 0) SCREEN_HEIGHT = ev->height;
-
-			uint32_t values[] = {SCREEN_WIDTH, SCREEN_HEIGHT};
-			xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
+			if (ev->height > 0) SCREEN_HEIGHT = ev->height; // TODO: this doesn't actually do anything
+			printf("Resized\n");
 		} break;
 		default:
-			printf("Unknown event occured\n");
+			printf("Unknown event occured: %i\n", e->response_type);
 			break;
 	}
 }
@@ -188,12 +183,12 @@ int main() {
 
 	printf("Building X11 window...");
 
-	connection                        = xcb_connect(NULL, NULL);
-	const xcb_setup_t *   setup       = xcb_get_setup(connection);
-	xcb_screen_iterator_t iter        = xcb_setup_roots_iterator(setup);
-	xcb_screen_t *        screen      = iter.data;
-	uint32_t              w_mask      = XCB_CW_EVENT_MASK;
-	uint32_t              w_values[1] = {XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_RESIZE_REDIRECT}; // Generate events when a button is pressed
+	connection                  = xcb_connect(NULL, NULL);
+	const xcb_setup_t *   setup = xcb_get_setup(connection);
+	xcb_screen_iterator_t iter  = xcb_setup_roots_iterator(setup);
+	screen                      = iter.data;
+	uint32_t w_mask             = XCB_CW_EVENT_MASK;
+	uint32_t w_values[1]        = {XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_RESIZE_REDIRECT}; // Generate events when a button is pressed
 
 	window = xcb_generate_id(connection);
 	xcb_create_window(connection, XCB_COPY_FROM_PARENT, window, screen->root, 0, 0,
