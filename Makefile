@@ -1,6 +1,7 @@
 TARGET = mandelbrot
-LIBS = -lm -lxcb -lpthread
-CFLAGS = -g -Wall -std=c99 -pthread
+LIBS = -lGLEW -lglfw3 -lGL -lX11 -lXi -lXrandr -lXxf86vm -lXinerama -lXcursor -lrt -lm -pthread -ldl
+CFLAGS = -g -Wall -std=c99 -I./glad -I./KHR
+
 
 .PHONY: default all clean
 
