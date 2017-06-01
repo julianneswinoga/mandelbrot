@@ -10,8 +10,9 @@ all: default
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))
 HEADERS = $(wildcard *.h)
+GLSL = vertexShader.glsl fragmentShader.glsl
 
-%.o: %.c $(HEADERS)
+%.o: %.c $(HEADERS) $(GLSL)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 .PRECIOUS: $(TARGET) $(OBJECTS)
