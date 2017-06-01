@@ -1,13 +1,4 @@
-#include "glad/glad.h"
-
-#include "input.h"
-#include "shaders.h"
-#include <GLFW/glfw3.h>
-#include <stdbool.h>
-#include <stdio.h>
-
-int windowWidth  = 200;
-int windowHeight = 200;
+#include "mandelbrot.h"
 
 char *vertexShaderSource =
 #include "vertexShader.glsl"
@@ -22,6 +13,12 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
 }
 
 int main() {
+	windowWidth  = 200;
+	windowHeight = 200;
+	_scale       = 1.0f;
+	_graph_x     = 0.0f;
+	_graph_y     = 0.0f;
+
 	if (!glfwInit()) {
 		return 1;
 	}
@@ -62,7 +59,7 @@ int main() {
 	    0, 1, 3,
 	    1, 2, 3};
 
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
 	glEnableVertexAttribArray(0);
 
@@ -70,19 +67,24 @@ int main() {
 	glGenVertexArrays(1, &VAO);
 	glBindVertexArray(VAO);             // bind Vertex Array Object
 	glBindBuffer(GL_ARRAY_BUFFER, VBO); // copy our vertices array in a buffer for OpenGL to use
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0); // then set our vertex attributes pointers
 	glEnableVertexAttribArray(0);
 
 	unsigned int EBO;
 	glGenBuffers(1, &EBO);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_DYNAMIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
 	unsigned int shaderProgram;
 	constructShaders(&vertexShaderSource, &fragmentShaderSource, &shaderProgram);
+
+	scaleLoc  = glGetUniformLocation(shaderProgram, "scale");
+	offsetLoc = glGetUniformLocation(shaderProgram, "offset");
+	glUniform1f(scaleLoc, _scale);
+	glUniform2f(offsetLoc, _graph_x, _graph_y);
 
 	printf("Initialized\n");
 
@@ -92,6 +94,8 @@ int main() {
 		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 		glUseProgram(shaderProgram);
+
+		glUniform1f(scaleLoc, _scale);
 
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);

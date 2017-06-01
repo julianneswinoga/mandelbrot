@@ -3,7 +3,9 @@
 
 #include "glad/glad.h"
 
+#include "mandelbrot.h"
 #include <GLFW/glfw3.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -12,8 +14,9 @@ void cursor_position_callback(GLFWwindow *window, double xpos, double ypos);
 void mouse_button_callback(GLFWwindow *window, int button, int action, int mods);
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
 
-int _cursor_position_x;
-int _cursor_position_y;
-float _scroll;
+int    _cursor_position_x;
+int    _cursor_position_y;
+bool   _mouse_l_button;
+double _scroll;
 
 #endif // _INPUT_H_
