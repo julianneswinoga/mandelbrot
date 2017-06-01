@@ -27,7 +27,6 @@ void cursor_position_callback(GLFWwindow *window, double xpos, double ypos) {
 		_graph_x = (click_x + last_x) - cursor_to_world_coords(_cursor_position_x, windowWidth);
 		_graph_y = (-click_y + last_y) + cursor_to_world_coords(_cursor_position_y, windowHeight);
 		glUniform2f(offsetLoc, _graph_x, _graph_y);
-		printf("_mouse_x: %f\n", ((((2.0f * _cursor_position_x) / (float)windowWidth) - 1.0f) * _scale));
 	}
 }
 
@@ -43,7 +42,6 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 			_mouse_l_button = false;
 			last_x          = _graph_x;
 			last_y          = _graph_y;
-			printf("last_x: %f\n", last_x);
 		}
 	} else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
 		printf("RIGHT CLICK @ (%i,%i)\n", _cursor_position_x, _cursor_position_y);
