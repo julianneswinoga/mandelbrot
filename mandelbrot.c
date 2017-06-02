@@ -14,6 +14,25 @@ void colorGradient(xcb_alloc_color_reply_t ***crs, double f1, double f2, double 
 	}
 }
 
+void writeImage() {
+	printf("Writing image...");
+	FILE *fp;
+	fp = fopen("test.ppm", "w+");
+
+	int outputimage_width = SCREEN_WIDTH, outputimage_height = SCREEN_HEIGHT, outputimage_maxcolor = (1 << 15);
+	fprintf(fp, "P3 %i %i %i\n", outputimage_width, outputimage_height, outputimage_maxcolor);
+
+	for (int i = 0; i < outputimage_height; i++) {
+		for (int j = 0; j < outputimage_width; j++) {
+			fprintf(fp, "%i %i %i\t", 0, (1 << 14), 0);
+		}
+		fprintf(fp, "\n");
+	}
+
+	fclose(fp);
+	printf("done!\n");
+}
+
 bool allThreadsComplete() {
 	for (int i = 0; i < NUM_THREADS; i++) {
 		if (!threadWorkDone[i])
@@ -138,7 +157,8 @@ void startMandel() {
 		}
 	}
 	printf("done!\n");
-	printf("Zoom level:%Lfe-12\tX:%Lfe-12\tY:%Lfe-12\n", graph.scale * 1E12, graph.x * 1E12, graph.y * 1E12);
+	printf("Zoom level:%Le\tX:%Le\tY:%Le\n", graph.scale, graph.x, graph.y);
+	writeImage();
 }
 
 void event_action(xcb_generic_event_t *e) {
