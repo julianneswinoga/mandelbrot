@@ -12,6 +12,13 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
 	glViewport(0, 0, width, height);
 }
 
+void doubleToVec2(double num, float (*vec4)[2]) {
+	(*vec4)[0] = (float)num;
+	(*vec4)[1] = (float)((double)(num) - (double)((*vec4)[0]));
+	//(*vec4)[2] = (float)(num - (double)(num));
+	//(*vec4)[3] = (float)((num - (double)(num)) - (float)(num - (double)(num)));
+}
+
 int main() {
 	windowWidth  = 200;
 	windowHeight = 200;
@@ -81,10 +88,17 @@ int main() {
 	unsigned int shaderProgram;
 	constructShaders(&vertexShaderSource, &fragmentShaderSource, &shaderProgram);
 
-	scaleLoc  = glGetUniformLocation(shaderProgram, "scale");
-	offsetLoc = glGetUniformLocation(shaderProgram, "offset");
-	glUniform1f(scaleLoc, _scale);
-	glUniform2f(offsetLoc, _graph_x, _graph_y);
+	scaleLoc   = glGetUniformLocation(shaderProgram, "scale");
+	offsetxLoc = glGetUniformLocation(shaderProgram, "offset_x");
+	offsetyLoc = glGetUniformLocation(shaderProgram, "offset_y");
+
+	doubleToVec2(_scale, &_scale_v4);
+	glUniform2fv(scaleLoc, 1, _scale_v4);
+
+	doubleToVec2(_graph_x, &_graph_x_v4);
+	glUniform2fv(offsetxLoc, 1, _graph_x_v4);
+	doubleToVec2(_graph_y, &_graph_y_v4);
+	glUniform2fv(offsetyLoc, 1, _graph_y_v4);
 
 	printf("Initialized\n");
 
@@ -95,7 +109,8 @@ int main() {
 		glClear(GL_COLOR_BUFFER_BIT);
 		glUseProgram(shaderProgram);
 
-		glUniform1f(scaleLoc, _scale);
+		doubleToVec2(_scale, &_scale_v4);
+		glUniform2fv(scaleLoc, 1, _scale_v4);
 
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);

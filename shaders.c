@@ -6,7 +6,7 @@ void constructShaders(char **vertexShaderSource, char **fragmentShaderSource, un
 	glShaderSource(vertexShader, 1, (const GLchar *const *)vertexShaderSource, NULL);
 	glCompileShader(vertexShader);
 	int  success;
-	char infoLog[512];
+	char infoLog[2048];
 	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
 	if (!success) {
 		glGetShaderInfoLog(vertexShader, sizeof(infoLog), NULL, infoLog);
