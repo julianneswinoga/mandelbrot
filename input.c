@@ -55,5 +55,5 @@ void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
 	_scroll += yoffset / 2.0f;
 	_scale = pow(2, -_scroll);
-	printf("%f\n", _scale);
+	printf("%g\n", _scale);
 }
