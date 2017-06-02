@@ -27,6 +27,12 @@ typedef struct {
 	long double scale;
 } GRAPH;
 
+typedef struct {
+	int r;
+	int g;
+	int b;
+} PIXEL;
+
 xcb_connection_t *        connection;
 xcb_screen_t *            screen;
 xcb_window_t              window;
@@ -36,6 +42,7 @@ xcb_alloc_color_reply_t **colors;
 xcb_generic_event_t *     e;
 
 GRAPH           graph;
+PIXEL **        pixscreen;
 int             next_available_line, SCREEN_WIDTH, SCREEN_HEIGHT, blocksize;
 pthread_mutex_t mutex_nextline, mutex_draw, mutex_phaseComplete;
 pthread_cond_t  condition_phaseComplete;
