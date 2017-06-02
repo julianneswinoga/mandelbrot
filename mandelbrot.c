@@ -24,7 +24,7 @@ void writeImage() {
 
 	for (int i = 0; i < outputimage_height; i++) {
 		for (int j = 0; j < outputimage_width; j++) {
-			fprintf(fp, "%i %i %i\t", 0, (1 << 14), 0);
+			fprintf(fp, "%i %i %i\t", pixscreen[i][j].r, pixscreen[i][j].g, pixscreen[i][j].b);
 		}
 		fprintf(fp, "\n");
 	}
@@ -104,6 +104,11 @@ void *mandelThread(void *arg) {
 				xcb_rectangle_t rect = {.x = px, .y = py, .width = blocksize, .height = blocksize};
 
 				pthread_mutex_lock(&mutex_draw);
+				if (px < SCREEN_WIDTH && py < SCREEN_HEIGHT) {
+					pixscreen[py][px].r = colors[colorIndex]->red;
+					pixscreen[py][px].g = colors[colorIndex]->green;
+					pixscreen[py][px].b = colors[colorIndex]->blue;
+				}
 				xcb_change_gc(connection, graphics, XCB_GC_FOREGROUND, &colors[colorIndex]->pixel); // Change the color
 				xcb_poly_fill_rectangle(connection, window, graphics, 1, &rect);
 				pthread_mutex_unlock(&mutex_draw);
@@ -200,6 +205,10 @@ int main() {
 	graph.y       = 0.0;
 	graph.scale   = 0.015;
 	blocksize     = INITIAL_BLOCKSIZE;
+	pixscreen     = (PIXEL **)malloc(SCREEN_HEIGHT * sizeof(PIXEL *));
+	for (int i = 0; i < SCREEN_HEIGHT; i++) {
+		pixscreen[i] = (PIXEL *)malloc(SCREEN_WIDTH * sizeof(PIXEL));
+	}
 
 	printf("Building X11 window...");
 
