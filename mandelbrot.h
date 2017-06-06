@@ -18,8 +18,9 @@
 #define MAX_ITER (1000)
 #define NUM_THREADS (8)
 #define THREAD_LINES (2)
-#define SCALE_FACTOR (0.1)
+#define SCALE_FACTOR (0.5)
 #define INITIAL_BLOCKSIZE (SCREEN_WIDTH / 4)
+#define MINIMUM_BLOCKSIZE (10)
 
 typedef struct {
 	long double x;

@@ -1,5 +1,7 @@
 #include "mandelbrot.h"
 
+#define IMAGE_GEN (true)
+
 /**
  * https://krazydad.com/tutorials/makecolors.php
  */
@@ -52,7 +54,7 @@ void *mandelThread(void *arg) {
 
 	while (1) {
 		if (next_available_line >= SCREEN_HEIGHT) { // No more work to be done
-			if (blocksize > 1) {
+			if (blocksize > MINIMUM_BLOCKSIZE) {
 				threadWorkDone[threadNumber] = true;
 				if (!allThreadsComplete()) { // Threads are still working, so wait
 					pthread_mutex_lock(&mutex_phaseComplete);
@@ -104,7 +106,7 @@ void *mandelThread(void *arg) {
 				xcb_rectangle_t rect = {.x = px, .y = py, .width = blocksize, .height = blocksize};
 
 				pthread_mutex_lock(&mutex_draw);
-				if (px < SCREEN_WIDTH && py < SCREEN_HEIGHT) {
+				if (px < SCREEN_WIDTH && py < SCREEN_HEIGHT) { // Draw image to screen object as well
 					pixscreen[py][px].r = colors[colorIndex]->red;
 					pixscreen[py][px].g = colors[colorIndex]->green;
 					pixscreen[py][px].b = colors[colorIndex]->blue;
@@ -163,7 +165,6 @@ void startMandel() {
 	}
 	printf("done!\n");
 	printf("Zoom level:%Le\tX:%Le\tY:%Le\n", graph.scale, graph.x, graph.y);
-	writeImage();
 }
 
 void event_action(xcb_generic_event_t *e) {
@@ -172,14 +173,15 @@ void event_action(xcb_generic_event_t *e) {
 			xcb_button_press_event_t *ev = (xcb_button_press_event_t *)e;
 			graph.x += graph.scale * (ev->event_x - SCREEN_WIDTH / 2);
 			graph.y += graph.scale * (ev->event_y - SCREEN_HEIGHT / 2);
+			printf("%i\n", ev->event_x);
 			switch (ev->detail) {
 				case 1: // Zoom in on left click
-					graph.scale *= 0.5;
+					graph.scale *= SCALE_FACTOR;
 					break;
 				case 2: // Pan with middle click
 					break;
 				case 3: // Zoom out with right click
-					graph.scale /= 0.5;
+					graph.scale /= SCALE_FACTOR;
 					break;
 				default:
 					break;
@@ -260,6 +262,21 @@ int main() {
 	sleep(3);
 
 	startMandel(); // Initial mandelbrot
+
+	if (IMAGE_GEN) {
+		long double max_zoom = 0.1;
+		graph.scale *= max_zoom;
+		long double origx, origy;
+		origx = graph.x;
+		origy = graph.y;
+		for (graph.y = origy - SCREEN_HEIGHT * graph.scale / max_zoom; graph.y < origy + SCREEN_HEIGHT * graph.scale / max_zoom; graph.y += graph.scale * SCREEN_HEIGHT) {
+			for (graph.x = origx - SCREEN_WIDTH * graph.scale / max_zoom; graph.x < origx + SCREEN_WIDTH * graph.scale / max_zoom; graph.x += graph.scale * SCREEN_WIDTH) {
+				//writeImage();
+				startMandel();
+				usleep(10 * 1000);
+			}
+		}
+	}
 
 	while ((e = xcb_wait_for_event(connection))) {
 		event_action(e);
