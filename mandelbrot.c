@@ -21,7 +21,7 @@ void writeImage() {
 	FILE *fp;
 	fp = fopen("test.ppm", "w+");
 
-	int outputimage_width = SCREEN_WIDTH, outputimage_height = SCREEN_HEIGHT, outputimage_maxcolor = (1 << 15);
+	int outputimage_width = SCREEN_WIDTH, outputimage_height = SCREEN_HEIGHT, outputimage_maxcolor = MAX_COLOR_INT;
 	fprintf(fp, "P3 %i %i %i\n", outputimage_width, outputimage_height, outputimage_maxcolor);
 
 	for (int i = 0; i < outputimage_height; i++) {
@@ -54,7 +54,7 @@ void *mandelThread(void *arg) {
 
 	while (1) {
 		if (next_available_line >= SCREEN_HEIGHT) { // No more work to be done
-			if (blocksize > MINIMUM_BLOCKSIZE) {
+			if (blocksize > (IMAGE_GEN ? MINIMUM_BLOCKSIZE : 1)) {
 				threadWorkDone[threadNumber] = true;
 				if (!allThreadsComplete()) { // Threads are still working, so wait
 					pthread_mutex_lock(&mutex_phaseComplete);
@@ -106,10 +106,12 @@ void *mandelThread(void *arg) {
 				xcb_rectangle_t rect = {.x = px, .y = py, .width = blocksize, .height = blocksize};
 
 				pthread_mutex_lock(&mutex_draw);
-				if (px < SCREEN_WIDTH && py < SCREEN_HEIGHT) { // Draw image to screen object as well
-					pixscreen[py][px].r = colors[colorIndex]->red;
-					pixscreen[py][px].g = colors[colorIndex]->green;
-					pixscreen[py][px].b = colors[colorIndex]->blue;
+				if (IMAGE_GEN) {
+					if (px < SCREEN_WIDTH && py < SCREEN_HEIGHT) { // Draw image to screen object as well
+						pixscreen[py][px].r = colors[colorIndex]->red;
+						pixscreen[py][px].g = colors[colorIndex]->green;
+						pixscreen[py][px].b = colors[colorIndex]->blue;
+					}
 				}
 				xcb_change_gc(connection, graphics, XCB_GC_FOREGROUND, &colors[colorIndex]->pixel); // Change the color
 				xcb_poly_fill_rectangle(connection, window, graphics, 1, &rect);
@@ -207,10 +209,6 @@ int main() {
 	graph.y       = 0.0;
 	graph.scale   = 0.015;
 	blocksize     = INITIAL_BLOCKSIZE;
-	pixscreen     = (PIXEL **)malloc(SCREEN_HEIGHT * sizeof(PIXEL *));
-	for (int i = 0; i < SCREEN_HEIGHT; i++) {
-		pixscreen[i] = (PIXEL *)malloc(SCREEN_WIDTH * sizeof(PIXEL));
-	}
 
 	printf("Building X11 window...");
 
@@ -242,7 +240,7 @@ int main() {
 	colors = malloc(PALETTE_LENGTH * sizeof(xcb_alloc_color_reply_t) + 1); // Allocate memory +1 for black
 	colorGradient(&colors, PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH,
 	              PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH,
-	              PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH, 0, 2, 4, (1 << 15), (1 << 15), PALETTE_LENGTH);
+	              PALETTE_RAINBOWS * 2.0 * M_PI / PALETTE_LENGTH, 0, 2, 4, MAX_COLOR_INT / 2, MAX_COLOR_INT / 2, PALETTE_LENGTH);
 
 	colors[PALETTE_LENGTH] = xcb_alloc_color_reply(connection, xcb_alloc_color(connection, colormapId, 0, 0, 0), NULL);
 
@@ -261,21 +259,32 @@ int main() {
 
 	sleep(3);
 
-	startMandel(); // Initial mandelbrot
-
 	if (IMAGE_GEN) {
-		long double max_zoom = 0.1;
-		graph.scale *= max_zoom;
-		long double origx, origy;
-		origx = graph.x;
-		origy = graph.y;
-		for (graph.y = origy - SCREEN_HEIGHT * graph.scale / max_zoom; graph.y < origy + SCREEN_HEIGHT * graph.scale / max_zoom; graph.y += graph.scale * SCREEN_HEIGHT) {
-			for (graph.x = origx - SCREEN_WIDTH * graph.scale / max_zoom; graph.x < origx + SCREEN_WIDTH * graph.scale / max_zoom; graph.x += graph.scale * SCREEN_WIDTH) {
+		int zooms = 2;
+		graph.scale *= 0.5 / zooms;
+
+		pixscreen = (PIXEL **)malloc(SCREEN_HEIGHT * sizeof(PIXEL *));
+		for (int i = 0; i < SCREEN_HEIGHT; i++) {
+			pixscreen[i] = (PIXEL *)malloc(SCREEN_WIDTH * sizeof(PIXEL));
+		}
+
+		graph.x -= graph.scale * SCREEN_WIDTH * zooms / 2;
+		graph.y -= graph.scale * SCREEN_HEIGHT * zooms / 2;
+
+		long double origx = graph.x;
+
+		for (int y = 0; y < zooms * 2; y++) {
+			graph.x = origx;
+			for (int x = 0; x < zooms * 2; x++) {
 				//writeImage();
 				startMandel();
-				usleep(10 * 1000);
+				//usleep(500 * 1000);
+				graph.x += graph.scale * SCREEN_WIDTH;
 			}
+			graph.y += graph.scale * SCREEN_HEIGHT;
 		}
+	} else {
+		startMandel(); // Initial mandelbrot
 	}
 
 	while ((e = xcb_wait_for_event(connection))) {
