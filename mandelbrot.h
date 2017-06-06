@@ -14,13 +14,14 @@
 
 #define BORDER_WIDTH (10)
 #define PALETTE_LENGTH (1000)
+#define MAX_COLOR_INT ((1 << 16) - 1)
 #define PALETTE_RAINBOWS (6)
 #define MAX_ITER (1000)
 #define NUM_THREADS (8)
 #define THREAD_LINES (2)
 #define SCALE_FACTOR (0.5)
-#define INITIAL_BLOCKSIZE (SCREEN_WIDTH / 4)
-#define MINIMUM_BLOCKSIZE (10)
+#define INITIAL_BLOCKSIZE (SCREEN_WIDTH / 8)
+#define MINIMUM_BLOCKSIZE (1)
 
 typedef struct {
 	long double x;
