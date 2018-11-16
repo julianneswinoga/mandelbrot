@@ -1,6 +1,6 @@
 #include "mandelbrot.h"
 
-#define IMAGE_GEN (true)
+#define IMAGE_GEN (false)
 
 /**
  * https://krazydad.com/tutorials/makecolors.php
@@ -203,8 +203,8 @@ void event_action(xcb_generic_event_t *e) {
 }
 
 int main() {
-	SCREEN_WIDTH  = 200; // Initial conditions
-	SCREEN_HEIGHT = 200;
+	SCREEN_WIDTH  = 800; // Initial conditions
+	SCREEN_HEIGHT = 800;
 	graph.x       = -0.8;
 	graph.y       = 0.0;
 	graph.scale   = 0.015;
@@ -223,6 +223,7 @@ int main() {
 	xcb_create_window(connection, XCB_COPY_FROM_PARENT, window, screen->root, 0, 0,
 	                  SCREEN_WIDTH, SCREEN_HEIGHT, BORDER_WIDTH, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen->root_visual, w_mask, w_values);
 	xcb_map_window(connection, window);
+    xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 0x8, strlen(WINDOW_CLASS_STR), WINDOW_CLASS_STR);
 
 	graphics             = xcb_generate_id(connection);
 	uint32_t g_mask      = XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES;
