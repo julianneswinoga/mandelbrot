@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <xcb/xcb.h>
 
@@ -22,6 +23,7 @@
 #define SCALE_FACTOR (0.5)
 #define INITIAL_BLOCKSIZE (SCREEN_WIDTH / 8)
 #define MINIMUM_BLOCKSIZE (1)
+#define WINDOW_CLASS_STR ("MANDELBROT_CLASS")
 
 typedef struct {
 	long double x;
