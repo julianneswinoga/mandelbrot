@@ -7,81 +7,11 @@ use ggez::graphics;
 use ggez::timer;
 use ggez::{Context, GameResult};
 
+mod pixeling;
+use pixeling::*;
+
 static WIN_WIDTH: usize = 640;
 static WIN_HEIGHT: usize = 480;
-
-#[derive(Debug, Clone, Copy)]
-struct RgbaPixel {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
-}
-
-impl Default for RgbaPixel {
-    fn default() -> Self {
-        RgbaPixel {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0xff,
-        }
-    }
-}
-
-impl RgbaPixel {
-    fn new(values: Option<[u8; 4]>) -> RgbaPixel {
-        match values {
-            Some(values) => RgbaPixel {
-                r: values[0],
-                g: values[1],
-                b: values[2],
-                a: values[3],
-            },
-            None => RgbaPixel {
-                ..Default::default()
-            },
-        }
-    }
-
-    fn set(&mut self, r: u8, g: u8, b: u8, a: u8) {
-        self.r = r;
-        self.g = g;
-        self.b = b;
-        self.a = a;
-    }
-
-    fn flat(&self) -> [u8; 4] {
-        [self.r, self.g, self.b, self.a]
-    }
-}
-
-struct PixelImage {
-    width: usize,
-    height: usize,
-    pixels: Vec<Vec<RgbaPixel>>,
-}
-
-impl PixelImage {
-    fn new(width: usize, height: usize) -> PixelImage {
-        PixelImage {
-            width,
-            height,
-            pixels: vec![vec![RgbaPixel::new(None); width]; height],
-        }
-    }
-
-    fn flat(&mut self) -> Vec<u8> {
-        let mut rtn: Vec<u8> = vec![];
-        for row in self.pixels.iter() {
-            for pix in row.iter() {
-                let flattened = pix.flat();
-                rtn.extend_from_slice(&flattened);
-            }
-        }
-        rtn
-    }
-}
 
 struct MainState {
     image: graphics::Image,
@@ -95,7 +25,8 @@ impl MainState {
             for j in 0..pix_img.height {
                 let r: u8 = (((i + 1) as f32 / pix_img.width as f32) * 0xff as f32) as u8;
                 let g: u8 = (((j + 1) as f32 / pix_img.height as f32) * 0xff as f32) as u8;
-                pix_img.pixels[j][i].set(r, g, 0, 0xff);
+                let b: u8 = (((i + 1) as f32 / pix_img.height as f32) * 0xff as f32) as u8;
+                pix_img.pixels[j][i].set(r, g, b, 0xff);
             }
         }
 
