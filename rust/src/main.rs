@@ -1,4 +1,3 @@
-extern crate cgmath;
 extern crate ggez;
 extern crate rand;
 
@@ -63,8 +62,8 @@ struct PixelImage {
 impl PixelImage {
     fn new(width: usize, height: usize) -> PixelImage {
         PixelImage {
-            width: width,
-            height: height,
+            width,
+            height,
             pixels: vec![vec![RgbaPixel::new(None); width]; height],
         }
     }
@@ -87,10 +86,10 @@ struct MainState {
 
 impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
-        const WIDTH: u16 = 160;
-        const HEIGHT: u16 = 160;
+        const WIDTH: usize = 160;
+        const HEIGHT: usize = 160;
 
-        let mut pix_img = PixelImage::new(WIDTH as usize, HEIGHT as usize);
+        let mut pix_img = PixelImage::new(WIDTH, HEIGHT);
 
         pix_img.pixels[50][50].set(0xff, 0xff, 0, 0xff);
 
@@ -119,12 +118,10 @@ impl event::EventHandler for MainState {
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         graphics::clear(ctx, [0.0, 0.0, 0.0, 1.0].into());
 
-        //        let color = Color::from((c, c, c, 255));
-        let dest_point = cgmath::Point2::new(1.5, 1.5);
         graphics::draw(
             ctx,
             &self.image,
-            (dest_point, 0.0, [1.0, 1.0, 1.0, 1.0].into()),
+            ([0.0, 0.0], 0.0, [1.0, 1.0, 1.0, 1.0].into()),
         )?;
 
         graphics::present(ctx)?;
