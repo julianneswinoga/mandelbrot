@@ -7,6 +7,9 @@ use ggez::graphics;
 use ggez::timer;
 use ggez::{Context, GameResult};
 
+static WIN_WIDTH: usize = 640;
+static WIN_HEIGHT: usize = 480;
+
 #[derive(Debug, Clone, Copy)]
 struct RgbaPixel {
     r: u8,
@@ -86,12 +89,15 @@ struct MainState {
 
 impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
-        const WIDTH: usize = 160;
-        const HEIGHT: usize = 160;
+        let mut pix_img = PixelImage::new(WIN_WIDTH, WIN_HEIGHT);
 
-        let mut pix_img = PixelImage::new(WIDTH, HEIGHT);
-
-        pix_img.pixels[50][50].set(0xff, 0xff, 0, 0xff);
+        for i in 0..pix_img.width {
+            for j in 0..pix_img.height {
+                let r: u8 = (((i + 1) as f32 / pix_img.width as f32) * 0xff as f32) as u8;
+                let g: u8 = (((j + 1) as f32 / pix_img.height as f32) * 0xff as f32) as u8;
+                pix_img.pixels[j][i].set(r, g, 0, 0xff);
+            }
+        }
 
         let flattened: Vec<u8> = pix_img.flat();
         let image = graphics::Image::from_rgba8(
@@ -136,7 +142,7 @@ pub fn main() -> GameResult {
         .window_setup(WindowSetup::default().title("rusty mandelbrot"))
         .window_mode(
             WindowMode::default()
-                .dimensions(640.0, 480.0)
+                .dimensions(WIN_WIDTH as f32, WIN_HEIGHT as f32)
                 .resizable(false),
         );
 
