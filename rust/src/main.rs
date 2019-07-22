@@ -1,16 +1,17 @@
 extern crate ggez;
-extern crate rand;
 #[macro_use]
 extern crate lazy_static;
+extern crate rand;
 
+use ggez::{Context, GameResult};
 use ggez::conf::{WindowMode, WindowSetup};
 use ggez::event;
 use ggez::graphics;
 use ggez::timer;
-use ggez::{Context, GameResult};
+
+use pixeling::*;
 
 mod pixeling;
-use pixeling::*;
 
 static WIN_WIDTH: usize = 640;
 static WIN_HEIGHT: usize = 480;
