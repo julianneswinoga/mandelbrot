@@ -1,5 +1,7 @@
 extern crate ggez;
 extern crate rand;
+#[macro_use]
+extern crate lazy_static;
 
 use ggez::conf::{WindowMode, WindowSetup};
 use ggez::event;
@@ -23,10 +25,9 @@ impl MainState {
 
         for i in 0..pix_img.width {
             for j in 0..pix_img.height {
-                let r: u8 = (((i + 1) as f32 / pix_img.width as f32) * 0xff as f32) as u8;
-                let g: u8 = (((j + 1) as f32 / pix_img.height as f32) * 0xff as f32) as u8;
-                let b: u8 = (((i + 1) as f32 / pix_img.height as f32) * 0xff as f32) as u8;
-                pix_img.pixels[j][i].set(r, g, b, 0xff);
+                let pix = RgbaPixel::from_rainbow(i);
+
+                pix_img.pixels[j][i].set(pix.r, pix.g, pix.b, pix.a);
             }
         }
 
