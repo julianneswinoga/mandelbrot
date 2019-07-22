@@ -1,9 +1,26 @@
+extern crate palette;
+
+use palette::{Gradient, Hsv, Pixel, Srgb};
+
+const RAINBOW_SIZE: usize = 256;
+
+lazy_static! {
+    static ref RAINBOW_GRADIENT: Vec<[u8; 3]> = Gradient::new(vec![
+        Hsv::new(0.0, 1.0, 1.0),
+        Hsv::new(180.0, 1.0, 1.0),
+        Hsv::new(360.0, 1.0, 1.0)
+    ])
+    .take(RAINBOW_SIZE)
+    .map(|x| { Srgb::from_linear(x.into()).into_format().into_raw() })
+    .collect::<Vec<_>>();
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct RgbaPixel {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
 }
 
 impl Default for RgbaPixel {
@@ -30,6 +47,18 @@ impl RgbaPixel {
                 ..Default::default()
             },
         }
+    }
+
+    pub fn from_rainbow(index: usize) -> RgbaPixel {
+        let mod_index = index % RAINBOW_GRADIENT.len();
+        let rgb_gradient = RAINBOW_GRADIENT[mod_index];
+
+        RgbaPixel::new(Some([
+            rgb_gradient[0],
+            rgb_gradient[1],
+            rgb_gradient[2],
+            0xff,
+        ]))
     }
 
     pub fn set(&mut self, r: u8, g: u8, b: u8, a: u8) {
