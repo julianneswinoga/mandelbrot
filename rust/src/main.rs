@@ -57,6 +57,20 @@ fn pix_to_cmplx(
     Complex::new(re, im)
 }
 
+fn compute_iter_for_point(position: Complex<FloatPrecision>) -> usize {
+    let mut point = Complex::<FloatPrecision>::new(0.0, 0.0);
+    let mut iteration: usize = 0;
+    while (point * point).re <= 2.0 * 2.0 && iteration < MAX_ITER {
+        let re_temp = point.re * point.re - point.im * point.im + position.re;
+        point.im = 2.0 * point.re * point.im + position.im;
+        point.re = re_temp;
+
+        iteration += 1;
+    }
+
+    iteration
+}
+
 fn update_mandel(
     ctx: &mut Context,
     top_left_scale: Complex<FloatPrecision>,
@@ -64,24 +78,17 @@ fn update_mandel(
 ) -> graphics::Image {
     let mut pix_img = PixelImage::new(WIN_WIDTH, WIN_HEIGHT);
 
-    for i in 0..pix_img.width {
-        for j in 0..pix_img.height {
-            let point0 = pix_to_cmplx(top_left_scale, bottom_right_scale, i, j);
-            let mut point = Complex::<FloatPrecision>::new(0.0, 0.0);
+    let max_width = pix_img.width;
+    let max_height = pix_img.height;
 
-            let mut iteration: usize = 0;
-            while (point * point).re <= 2.0 * 2.0 && iteration < MAX_ITER {
-                let re_temp = point.re * point.re - point.im * point.im + point0.re;
-                point.im = 2.0 * point.re * point.im + point0.im;
-                point.re = re_temp;
+    let pix_iterator = (0..max_width).flat_map(|x| (std::iter::repeat(x).zip(0..max_height)));
 
-                iteration += 1;
-            }
+    for (x, y) in pix_iterator {
+        let current_point = pix_to_cmplx(top_left_scale, bottom_right_scale, x, y);
 
-            let pix = RgbaPixel::from_rainbow(iteration);
+        let pix = RgbaPixel::from_rainbow(compute_iter_for_point(current_point));
 
-            pix_img.pixels[j][i].set(pix.r, pix.g, pix.b, pix.a);
-        }
+        pix_img.pixels[y][x].set(pix.r, pix.g, pix.b, pix.a);
     }
 
     let flattened: Vec<u8> = pix_img.flat();
@@ -139,10 +146,14 @@ impl event::EventHandler for MainState {
                 || self.bottom_right_graph != self.last_bottom_right_graph
             {
                 println!("Updating");
+                let start_time = timer::time_since_start(ctx);
                 self.image = update_mandel(ctx, self.top_left_graph, self.bottom_right_graph);
                 self.last_top_left_graph = self.top_left_graph;
                 self.last_bottom_right_graph = self.bottom_right_graph;
                 println!("Done");
+                let end_time = timer::time_since_start(ctx);
+                println!("Update took {}ms", (end_time - start_time).as_millis());
+
                 let window_title = format!(
                     "rusty mandelbrot - viewing {}{:+}i to {}{:+}i",
                     self.top_left_graph.re,
