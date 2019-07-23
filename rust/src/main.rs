@@ -219,6 +219,21 @@ impl event::EventHandler for MainState {
         match _btn {
             event::MouseButton::Left => {
                 self.view_window.selecting = false;
+
+                // Setting the graph extents will force an update
+                self.top_left_graph = pix_to_cmplx(
+                    self.top_left_graph,
+                    self.bottom_right_graph,
+                    self.view_window.left as usize,
+                    self.view_window.top as usize,
+                );
+                self.bottom_right_graph = pix_to_cmplx(
+                    self.top_left_graph,
+                    self.bottom_right_graph,
+                    self.view_window.right as usize,
+                    self.view_window.bottom as usize,
+                );
+
                 self.view_window.right = x as usize;
                 self.view_window.bottom = y as usize;
                 self.view_window.left = x as usize;
