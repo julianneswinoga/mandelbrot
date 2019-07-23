@@ -2,15 +2,17 @@ extern crate ggez;
 #[macro_use]
 extern crate lazy_static;
 extern crate num_complex;
+extern crate structopt;
 
 use ggez::conf::{WindowMode, WindowSetup};
 use ggez::event;
 use ggez::graphics;
+use ggez::graphics::DrawMode;
 use ggez::timer;
 use ggez::{Context, GameResult};
 use num_complex::Complex;
+use structopt::StructOpt;
 
-use ggez::graphics::DrawMode;
 use pixeling::*;
 
 mod pixeling;
@@ -129,12 +131,13 @@ struct MainState {
 }
 
 impl MainState {
-    fn new(ctx: &mut Context) -> GameResult<MainState> {
+    fn new(
+        ctx: &mut Context,
+        default_top_left_scale: Complex<FloatPrecision>,
+        default_bottom_right_scale: Complex<FloatPrecision>,
+    ) -> GameResult<MainState> {
         let default_image =
             graphics::Image::solid(ctx, WIN_WIDTH as u16, ggez::graphics::BLACK).unwrap();
-
-        let default_top_left_scale = Complex::<FloatPrecision>::new(-2.5, -1.0);
-        let default_bottom_right_scale = Complex::<FloatPrecision>::new(1.0, 1.0);
 
         let s = MainState {
             view_window: ViewWindow::default(),
@@ -156,7 +159,10 @@ impl event::EventHandler for MainState {
             if self.top_left_graph != self.last_top_left_graph
                 || self.bottom_right_graph != self.last_bottom_right_graph
             {
-                println!("Updating");
+                println!(
+                    "Updating to {} {}",
+                    self.top_left_graph, self.bottom_right_graph
+                );
                 let start_time = timer::time_since_start(ctx);
                 self.image = update_mandel(ctx, self.top_left_graph, self.bottom_right_graph);
                 self.last_top_left_graph = self.top_left_graph;
@@ -225,7 +231,6 @@ impl event::EventHandler for MainState {
         x: f32,
         y: f32,
     ) {
-        println!("Click at {} {} {:?}", x, y, _btn);
         match _btn {
             event::MouseButton::Left => {
                 self.view_window.selecting = true;
@@ -245,7 +250,6 @@ impl event::EventHandler for MainState {
         x: f32,
         y: f32,
     ) {
-        println!("Release at {} {} {:?}", x, y, _btn);
         match _btn {
             event::MouseButton::Left => {
                 self.view_window.selecting = false;
@@ -281,7 +285,55 @@ impl event::EventHandler for MainState {
     }
 }
 
+fn parse_starting_scale(src: &str) -> Result<[FloatPrecision; 4], String> {
+    let substrs: Vec<&str> = src
+        .trim_matches(|c| c == '(' || c == ')')
+        .split(',')
+        .collect();
+    if substrs.len() != 4 {
+        return Err(format!("must only have 4 elements"));
+    }
+
+    let mut floats = Vec::<FloatPrecision>::new();
+    for substr in substrs {
+        floats.push(match substr.trim().parse::<FloatPrecision>() {
+            Ok(f) => f,
+            Err(e) => return Err(format!("Could not parse {:?}", e)),
+        })
+    }
+
+    let rtn_floats: [FloatPrecision; 4] = [floats[0], floats[1], floats[2], floats[3]];
+    Ok(rtn_floats)
+}
+
+#[derive(StructOpt, Debug)]
+#[structopt(
+    name = "mandelbrot",
+    about = "a rusty implementation of a mandelbrot viewer"
+)]
+struct Opt {
+    // The number of occurrences of the `v/verbose` flag
+    /// Verbose mode (-v, -vv, -vvv, etc.)
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    verbose: u8,
+
+    #[structopt(
+        long = "starting_scale",
+        help = "Set the starting screen to starting_scale. Coords are left,top,right,bottom",
+        default_value = "(-2.5,-1.0,1.0,1.0)",
+        parse(try_from_str = "parse_starting_scale")
+    )]
+    starting_scale: [FloatPrecision; 4],
+}
+
 pub fn main() -> GameResult {
+    let opt = Opt::from_args();
+
+    let default_top_left_scale =
+        Complex::<FloatPrecision>::new(opt.starting_scale[0], opt.starting_scale[1]);
+    let default_bottom_right_scale =
+        Complex::<FloatPrecision>::new(opt.starting_scale[2], opt.starting_scale[3]);
+
     let cb = ggez::ContextBuilder::new("", "")
         .window_setup(WindowSetup::default())
         .window_mode(
@@ -292,6 +344,6 @@ pub fn main() -> GameResult {
 
     let (ctx, event_loop) = &mut cb.build()?;
 
-    let state = &mut MainState::new(ctx)?;
+    let state = &mut MainState::new(ctx, default_top_left_scale, default_bottom_right_scale)?;
     event::run(ctx, event_loop, state)
 }
