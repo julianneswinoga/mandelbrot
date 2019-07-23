@@ -143,6 +143,14 @@ impl event::EventHandler for MainState {
                 self.last_top_left_graph = self.top_left_graph;
                 self.last_bottom_right_graph = self.bottom_right_graph;
                 println!("Done");
+                let window_title = format!(
+                    "rusty mandelbrot - viewing {}{:+}i to {}{:+}i",
+                    self.top_left_graph.re,
+                    self.top_left_graph.im,
+                    self.bottom_right_graph.re,
+                    self.bottom_right_graph.im
+                );
+                graphics::set_window_title(ctx, &window_title);
             }
         }
         Ok(())
@@ -253,7 +261,7 @@ impl event::EventHandler for MainState {
 
 pub fn main() -> GameResult {
     let cb = ggez::ContextBuilder::new("", "")
-        .window_setup(WindowSetup::default().title("rusty mandelbrot"))
+        .window_setup(WindowSetup::default())
         .window_mode(
             WindowMode::default()
                 .dimensions(WIN_WIDTH as f32, WIN_HEIGHT as f32)
