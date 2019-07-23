@@ -58,10 +58,21 @@ fn pix_to_cmplx(
 }
 
 fn compute_iter_for_point(position: Complex<FloatPrecision>) -> usize {
+    // Cardioid test
+    let q = (position.re - 0.25).powi(2) + position.im.powi(2);
+    if q * (q + (position.re - 0.25)) <= 0.25 * position.im.powi(2) {
+        return MAX_ITER;
+    }
+
+    // Period-2 bulb test
+    if (position.re + 1.0).powi(2) + position.im.powi(2) < 1.0 / 16.0 {
+        return MAX_ITER;
+    }
+
     let mut point = Complex::<FloatPrecision>::new(0.0, 0.0);
     let mut iteration: usize = 0;
-    while (point * point).re <= 2.0 * 2.0 && iteration < MAX_ITER {
-        let re_temp = point.re * point.re - point.im * point.im + position.re;
+    while point.re.powi(2) <= 2.0 * 2.0 && iteration < MAX_ITER {
+        let re_temp = point.re.powi(2) - point.im.powi(2) + position.re;
         point.im = 2.0 * point.re * point.im + position.im;
         point.re = re_temp;
 
