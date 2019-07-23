@@ -10,6 +10,7 @@ use ggez::timer;
 use ggez::{Context, GameResult};
 use num_complex::Complex;
 
+use ggez::graphics::DrawMode;
 use pixeling::*;
 
 mod pixeling;
@@ -91,11 +92,21 @@ fn update_mandel(
     image
 }
 
+#[derive(Default)]
+struct ViewWindow {
+    selecting: bool,
+    top: usize,
+    left: usize,
+    bottom: usize,
+    right: usize,
+}
+
 struct MainState {
-    top_left_scale: Complex<FloatPrecision>,
-    last_top_left_scale: Complex<FloatPrecision>,
-    bottom_right_scale: Complex<FloatPrecision>,
-    last_bottom_right_scale: Complex<FloatPrecision>,
+    view_window: ViewWindow,
+    top_left_graph: Complex<FloatPrecision>,
+    last_top_left_graph: Complex<FloatPrecision>,
+    bottom_right_graph: Complex<FloatPrecision>,
+    last_bottom_right_graph: Complex<FloatPrecision>,
     image: graphics::Image,
 }
 
@@ -108,11 +119,11 @@ impl MainState {
         let default_bottom_right_scale = Complex::<FloatPrecision>::new(1.0, 1.0);
 
         let s = MainState {
-            top_left_scale: default_top_left_scale,
-            last_top_left_scale: Complex::<FloatPrecision>::new(0.0, 0.0),
-            bottom_right_scale: default_bottom_right_scale,
-            last_bottom_right_scale: Complex::<FloatPrecision>::new(0.0, 0.0),
-
+            view_window: ViewWindow::default(),
+            top_left_graph: default_top_left_scale,
+            last_top_left_graph: Complex::<FloatPrecision>::new(0.0, 0.0),
+            bottom_right_graph: default_bottom_right_scale,
+            last_bottom_right_graph: Complex::<FloatPrecision>::new(0.0, 0.0),
             image: default_image,
         };
 
@@ -124,13 +135,13 @@ impl event::EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         const DESIRED_FPS: u32 = 30;
         while timer::check_update_time(ctx, DESIRED_FPS) {
-            if self.top_left_scale != self.last_top_left_scale
-                || self.bottom_right_scale != self.last_bottom_right_scale
+            if self.top_left_graph != self.last_top_left_graph
+                || self.bottom_right_graph != self.last_bottom_right_graph
             {
                 println!("Updating");
-                self.image = update_mandel(ctx, self.top_left_scale, self.bottom_right_scale);
-                self.last_top_left_scale = self.top_left_scale;
-                self.last_bottom_right_scale = self.bottom_right_scale;
+                self.image = update_mandel(ctx, self.top_left_graph, self.bottom_right_graph);
+                self.last_top_left_graph = self.top_left_graph;
+                self.last_bottom_right_graph = self.bottom_right_graph;
                 println!("Done");
             }
         }
@@ -138,13 +149,38 @@ impl event::EventHandler for MainState {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        graphics::clear(ctx, [0.0, 0.0, 0.0, 1.0].into());
+        let clear_color = [0.0, 0.0, 0.0, 1.0].into();
+        let default_params = ([0.0, 0.0], 0.0, [1.0, 1.0, 1.0, 1.0].into());
 
-        graphics::draw(
-            ctx,
-            &self.image,
-            ([0.0, 0.0], 0.0, [1.0, 1.0, 1.0, 1.0].into()),
-        )?;
+        graphics::clear(ctx, clear_color);
+
+        graphics::draw(ctx, &self.image, default_params)?;
+
+        if self.view_window.selecting {
+            let x = self.view_window.left as f32;
+            let y = self.view_window.top as f32;
+            let w = (self.view_window.right as isize - self.view_window.left as isize) as f32;
+            let h = (self.view_window.bottom as isize - self.view_window.top as isize) as f32;
+            let outer_rect = graphics::Rect::new(x, y, w, h);
+            let inner_rect = graphics::Rect::new(x + 1.0, y + 1.0, w - 2.0, h - 2.0);
+            let rect_stroke = DrawMode::stroke(1.0);
+
+            let outer_rect_mesh = graphics::Mesh::new_rectangle(
+                ctx,
+                rect_stroke,
+                outer_rect,
+                [0.0, 0.0, 0.0, 1.0].into(),
+            )?;
+            let inner_rect_mesh = graphics::Mesh::new_rectangle(
+                ctx,
+                rect_stroke,
+                inner_rect,
+                [1.0, 1.0, 1.0, 1.0].into(),
+            )?;
+
+            graphics::draw(ctx, &outer_rect_mesh, default_params)?;
+            graphics::draw(ctx, &inner_rect_mesh, default_params)?;
+        }
 
         graphics::present(ctx)?;
 
@@ -159,9 +195,44 @@ impl event::EventHandler for MainState {
         x: f32,
         y: f32,
     ) {
-        println!("Click at {} {}", x, y);
-        self.top_left_scale = self.top_left_scale / 2.0;
-        self.bottom_right_scale = self.bottom_right_scale / 2.0;
+        println!("Click at {} {} {:?}", x, y, _btn);
+        match _btn {
+            event::MouseButton::Left => {
+                self.view_window.selecting = true;
+                self.view_window.left = x as usize;
+                self.view_window.top = y as usize;
+                self.view_window.right = x as usize;
+                self.view_window.bottom = y as usize;
+            }
+            _ => println!("Unhandled button press {:?}", _btn),
+        };
+    }
+
+    fn mouse_button_up_event(
+        &mut self,
+        _ctx: &mut Context,
+        _btn: event::MouseButton,
+        x: f32,
+        y: f32,
+    ) {
+        println!("Release at {} {} {:?}", x, y, _btn);
+        match _btn {
+            event::MouseButton::Left => {
+                self.view_window.selecting = false;
+                self.view_window.right = x as usize;
+                self.view_window.bottom = y as usize;
+                self.view_window.left = x as usize;
+                self.view_window.top = y as usize;
+            }
+            _ => println!("Unhandled button press {:?}", _btn),
+        };
+    }
+
+    fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, _dx: f32, _dy: f32) {
+        if self.view_window.selecting {
+            self.view_window.right = x as usize;
+            self.view_window.bottom = y as usize;
+        }
     }
 }
 
