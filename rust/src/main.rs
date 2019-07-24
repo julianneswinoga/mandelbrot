@@ -13,76 +13,15 @@ use ggez::{Context, GameResult};
 use num_complex::Complex;
 use structopt::StructOpt;
 
+use calculations::*;
 use pixeling::*;
 
+mod calculations;
 mod pixeling;
 
-type FloatPrecision = f32;
-
-static WIN_WIDTH: usize = 640;
-static WIN_HEIGHT: usize = 480;
-static MAX_ITER: usize = 1000;
-
-fn linear_transform<T>(x: T, a: T, b: T, c: T, d: T) -> T
-where
-    T: Copy
-        + std::ops::Sub<T, Output = T>
-        + std::ops::Div<T, Output = T>
-        + std::ops::Mul<T, Output = T>
-        + std::ops::Add<T, Output = T>,
-{
-    (x - a) / (b - a) * (d - c) + c
-}
-
-fn pix_to_cmplx(
-    top_left_scale: Complex<FloatPrecision>,
-    bottom_right_scale: Complex<FloatPrecision>,
-    x: usize,
-    y: usize,
-) -> Complex<FloatPrecision> {
-    let re = linear_transform::<FloatPrecision>(
-        x as FloatPrecision,
-        0 as FloatPrecision,
-        WIN_WIDTH as FloatPrecision,
-        top_left_scale.re,
-        bottom_right_scale.re,
-    );
-
-    let im = linear_transform::<FloatPrecision>(
-        y as FloatPrecision,
-        0 as FloatPrecision,
-        WIN_HEIGHT as FloatPrecision,
-        top_left_scale.im,
-        bottom_right_scale.im,
-    );
-
-    Complex::new(re, im)
-}
-
-fn compute_iter_for_point(position: Complex<FloatPrecision>) -> usize {
-    // Cardioid test
-    let q = (position.re - 0.25).powi(2) + position.im.powi(2);
-    if q * (q + (position.re - 0.25)) <= 0.25 * position.im.powi(2) {
-        return MAX_ITER;
-    }
-
-    // Period-2 bulb test
-    if (position.re + 1.0).powi(2) + position.im.powi(2) < 1.0 / 16.0 {
-        return MAX_ITER;
-    }
-
-    let mut point = Complex::<FloatPrecision>::new(0.0, 0.0);
-    let mut iteration: usize = 0;
-    while point.re.powi(2) <= 2.0 * 2.0 && iteration < MAX_ITER {
-        let re_temp = point.re.powi(2) - point.im.powi(2) + position.re;
-        point.im = 2.0 * point.re * point.im + position.im;
-        point.re = re_temp;
-
-        iteration += 1;
-    }
-
-    iteration
-}
+pub static WIN_WIDTH: usize = 640;
+pub static WIN_HEIGHT: usize = 480;
+pub static MAX_ITER: usize = 1000;
 
 fn update_mandel(
     ctx: &mut Context,
@@ -97,9 +36,16 @@ fn update_mandel(
     let pix_iterator = (0..max_width).flat_map(|x| (std::iter::repeat(x).zip(0..max_height)));
 
     for (x, y) in pix_iterator {
-        let current_point = pix_to_cmplx(top_left_scale, bottom_right_scale, x, y);
+        let current_point = pix_to_cmplx(
+            top_left_scale,
+            bottom_right_scale,
+            x,
+            y,
+            WIN_WIDTH,
+            WIN_HEIGHT,
+        );
 
-        let pix = RgbaPixel::from_rainbow(compute_iter_for_point(current_point));
+        let pix = RgbaPixel::from_rainbow(compute_iter_for_point(current_point, MAX_ITER));
 
         pix_img.pixels[y][x].set(pix.r, pix.g, pix.b, pix.a);
     }
@@ -260,12 +206,16 @@ impl event::EventHandler for MainState {
                     self.bottom_right_graph,
                     self.view_window.left as usize,
                     self.view_window.top as usize,
+                    WIN_WIDTH,
+                    WIN_HEIGHT,
                 );
                 self.bottom_right_graph = pix_to_cmplx(
                     self.top_left_graph,
                     self.bottom_right_graph,
                     self.view_window.right as usize,
                     self.view_window.bottom as usize,
+                    WIN_WIDTH,
+                    WIN_HEIGHT,
                 );
 
                 self.view_window.right = x as usize;
