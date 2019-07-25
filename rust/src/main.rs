@@ -35,20 +35,24 @@ fn update_mandel(
 
     let pix_iterator = (0..max_width).flat_map(|x| (std::iter::repeat(x).zip(0..max_height)));
 
-    for (x, y) in pix_iterator {
-        let current_point = pix_to_cmplx(
-            top_left_scale,
-            bottom_right_scale,
-            x,
-            y,
-            WIN_WIDTH,
-            WIN_HEIGHT,
-        );
+    let compute_iteration_closure = |x: usize, y: usize| {
+        compute_iter_for_point(
+            pix_to_cmplx(
+                top_left_scale,
+                bottom_right_scale,
+                x,
+                y,
+                WIN_WIDTH,
+                WIN_HEIGHT,
+            ),
+            MAX_ITER,
+        )
+    };
 
-        let pix = RgbaPixel::from_rainbow(compute_iter_for_point(current_point, MAX_ITER));
-
+    pix_iterator.for_each(|(x, y)| {
+        let pix = RgbaPixel::from_rainbow(compute_iteration_closure(x, y));
         pix_img.pixels[y][x].set(pix.r, pix.g, pix.b, pix.a);
-    }
+    });
 
     let flattened: Vec<u8> = pix_img.flat();
     let image =
