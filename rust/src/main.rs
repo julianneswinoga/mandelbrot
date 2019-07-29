@@ -2,6 +2,7 @@ extern crate ggez;
 #[macro_use]
 extern crate lazy_static;
 extern crate num_complex;
+extern crate rayon;
 extern crate structopt;
 
 use ggez::conf::{WindowMode, WindowSetup};
@@ -11,6 +12,7 @@ use ggez::graphics::DrawMode;
 use ggez::timer;
 use ggez::{Context, GameResult};
 use num_complex::Complex;
+use rayon::prelude::*;
 use structopt::StructOpt;
 
 use calculations::*;
@@ -19,8 +21,8 @@ use pixeling::*;
 mod calculations;
 mod pixeling;
 
-pub static WIN_WIDTH: usize = 640;
-pub static WIN_HEIGHT: usize = 480;
+pub static WIN_WIDTH: usize = 1920;
+pub static WIN_HEIGHT: usize = 1080;
 pub static MAX_ITER: usize = 1000;
 
 fn update_mandel(
@@ -28,36 +30,41 @@ fn update_mandel(
     top_left_scale: Complex<FloatPrecision>,
     bottom_right_scale: Complex<FloatPrecision>,
 ) -> graphics::Image {
-    let mut pix_img = PixelImage::new(WIN_WIDTH, WIN_HEIGHT);
+    let max_width = WIN_WIDTH as u16;
+    let max_height = WIN_HEIGHT as u16;
 
-    let max_width = pix_img.width;
-    let max_height = pix_img.height;
+    let mut iteration_vec: Vec<(u16, u16, usize)> = (0..max_width)
+        .flat_map(|x| std::iter::repeat(x).zip(0..max_height))
+        .map(|(x, y)| (x, y, 0 as usize))
+        .collect();
 
-    let pix_iterator = (0..max_width).flat_map(|x| (std::iter::repeat(x).zip(0..max_height)));
-
-    let compute_iteration_closure = |x: usize, y: usize| {
-        compute_iter_for_point(
+    iteration_vec.par_iter_mut().for_each(|(x, y, iter)| {
+        *iter = compute_iter_for_point(
             pix_to_cmplx(
                 top_left_scale,
                 bottom_right_scale,
-                x,
-                y,
+                *x as usize,
+                *y as usize,
                 WIN_WIDTH,
                 WIN_HEIGHT,
             ),
             MAX_ITER,
         )
-    };
-
-    pix_iterator.for_each(|(x, y)| {
-        let pix = RgbaPixel::from_rainbow(compute_iteration_closure(x, y));
-        pix_img.pixels[y][x].set(pix.r, pix.g, pix.b, pix.a);
     });
 
-    let flattened: Vec<u8> = pix_img.flat();
-    let image =
-        graphics::Image::from_rgba8(ctx, pix_img.width as u16, pix_img.height as u16, &flattened)
-            .unwrap();
+    let mut computed_pixels: Vec<(u16, u16, Vec<u8>)> = iteration_vec
+        .into_iter()
+        .map(|(x, y, iter)| (x, y, RgbaPixel::from_rainbow(iter).flat()))
+        .collect();
+
+    computed_pixels.sort_by(|(x1, y1, _pix1), (x2, y2, _pix2)| y1.cmp(y2).then(x1.cmp(x2)));
+
+    let flattened: Vec<u8> = computed_pixels
+        .into_iter()
+        .flat_map(|(_x, _y, pix)| pix)
+        .collect();
+
+    let image = graphics::Image::from_rgba8(ctx, max_width, max_height, &flattened).unwrap();
 
     image
 }
@@ -114,6 +121,10 @@ impl event::EventHandler for MainState {
                     self.top_left_graph, self.bottom_right_graph
                 );
                 let start_time = timer::time_since_start(ctx);
+                self.image = update_mandel(ctx, self.top_left_graph, self.bottom_right_graph);
+                self.image = update_mandel(ctx, self.top_left_graph, self.bottom_right_graph);
+                self.image = update_mandel(ctx, self.top_left_graph, self.bottom_right_graph);
+                self.image = update_mandel(ctx, self.top_left_graph, self.bottom_right_graph);
                 self.image = update_mandel(ctx, self.top_left_graph, self.bottom_right_graph);
                 self.last_top_left_graph = self.top_left_graph;
                 self.last_bottom_right_graph = self.bottom_right_graph;

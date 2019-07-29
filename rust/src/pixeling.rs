@@ -68,11 +68,12 @@ impl RgbaPixel {
         self.a = a;
     }
 
-    fn flat(&self) -> [u8; 4] {
-        [self.r, self.g, self.b, self.a]
+    pub fn flat(&self) -> Vec<u8> {
+        vec![self.r, self.g, self.b, self.a]
     }
 }
 
+#[derive(Clone)]
 pub struct PixelImage {
     pub width: usize,
     pub height: usize,
@@ -97,5 +98,14 @@ impl PixelImage {
             }
         }
         rtn
+    }
+}
+
+impl Iterator for PixelImage {
+    type Item = (usize, usize);
+    fn next(&mut self) -> Option<(usize, usize)> {
+        (0..self.width)
+            .flat_map(|x| (std::iter::repeat(x).zip(0..self.height)))
+            .next()
     }
 }
