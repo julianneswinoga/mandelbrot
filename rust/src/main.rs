@@ -19,21 +19,18 @@ use pixeling::*;
 mod calculations;
 mod pixeling;
 
-pub static WIN_WIDTH: usize = 640;
-pub static WIN_HEIGHT: usize = 480;
 pub static MAX_ITER: usize = 1000;
 
-fn update_mandel(
+fn get_mandel_image(
     ctx: &mut Context,
+    image_width: usize,
+    image_height: usize,
     top_left_scale: Complex<FloatPrecision>,
     bottom_right_scale: Complex<FloatPrecision>,
 ) -> graphics::Image {
-    let mut pix_img = PixelImage::new(WIN_WIDTH, WIN_HEIGHT);
+    let mut pix_img = PixelImage::new(image_width, image_height);
 
-    let max_width = pix_img.width;
-    let max_height = pix_img.height;
-
-    let pix_iterator = (0..max_width).flat_map(|x| (std::iter::repeat(x).zip(0..max_height)));
+    let pix_iterator = (0..image_width).flat_map(|x| (std::iter::repeat(x).zip(0..image_height)));
 
     let compute_iteration_closure = |x: usize, y: usize| {
         compute_iter_for_point(
@@ -42,8 +39,8 @@ fn update_mandel(
                 bottom_right_scale,
                 x,
                 y,
-                WIN_WIDTH,
-                WIN_HEIGHT,
+                image_width,
+                image_height,
             ),
             MAX_ITER,
         )
@@ -56,10 +53,47 @@ fn update_mandel(
 
     let flattened: Vec<u8> = pix_img.flat();
     let image =
-        graphics::Image::from_rgba8(ctx, pix_img.width as u16, pix_img.height as u16, &flattened)
+        graphics::Image::from_rgba8(ctx, image_width as u16, image_height as u16, &flattened)
             .unwrap();
 
     image
+}
+
+fn update_view(
+    main_state: &mut MainState,
+    ctx: &mut Context,
+    image_width: usize,
+    image_height: usize,
+    top_left_scale: Complex<FloatPrecision>,
+    bottom_right_scale: Complex<FloatPrecision>,
+) {
+    println!(
+        "Updating to {} {} ({}x{})",
+        top_left_scale, top_left_scale, image_width, image_height
+    );
+    let start_time = timer::time_since_start(ctx);
+    main_state.image = get_mandel_image(
+        ctx,
+        image_width,
+        image_height,
+        top_left_scale,
+        bottom_right_scale,
+    );
+
+    main_state.last_top_left_graph = main_state.top_left_graph;
+    main_state.last_bottom_right_graph = main_state.bottom_right_graph;
+    println!("Done");
+    let end_time = timer::time_since_start(ctx);
+    println!("Update took {}ms", (end_time - start_time).as_millis());
+
+    let window_title = format!(
+        "rusty mandelbrot - viewing {}{:+}i to {}{:+}i",
+        main_state.top_left_graph.re,
+        main_state.top_left_graph.im,
+        main_state.bottom_right_graph.re,
+        main_state.bottom_right_graph.im
+    );
+    graphics::set_window_title(ctx, &window_title);
 }
 
 #[derive(Default)]
@@ -73,6 +107,8 @@ struct ViewWindow {
 
 struct MainState {
     view_window: ViewWindow,
+    window_width: usize,
+    window_height: usize,
     top_left_graph: Complex<FloatPrecision>,
     last_top_left_graph: Complex<FloatPrecision>,
     bottom_right_graph: Complex<FloatPrecision>,
@@ -86,11 +122,24 @@ impl MainState {
         default_top_left_scale: Complex<FloatPrecision>,
         default_bottom_right_scale: Complex<FloatPrecision>,
     ) -> GameResult<MainState> {
+        let default_width = 640;
+        let default_height = 480;
+
         let default_image =
-            graphics::Image::solid(ctx, WIN_WIDTH as u16, ggez::graphics::BLACK).unwrap();
+            graphics::Image::solid(ctx, default_width as u16, ggez::graphics::BLACK).unwrap();
+
+        graphics::set_mode(
+            ctx,
+            ggez::conf::WindowMode::default()
+                .min_dimensions(200.0, 200.0)
+                .dimensions(default_width as f32, default_height as f32)
+                .resizable(true),
+        )?;
 
         let s = MainState {
             view_window: ViewWindow::default(),
+            window_width: default_width,
+            window_height: default_height,
             top_left_graph: default_top_left_scale,
             last_top_left_graph: Complex::<FloatPrecision>::new(0.0, 0.0),
             bottom_right_graph: default_bottom_right_scale,
@@ -109,26 +158,15 @@ impl event::EventHandler for MainState {
             if self.top_left_graph != self.last_top_left_graph
                 || self.bottom_right_graph != self.last_bottom_right_graph
             {
-                println!(
-                    "Updating to {} {}",
-                    self.top_left_graph, self.bottom_right_graph
+                // Graph coordinates changed, update the image
+                update_view(
+                    self,
+                    ctx,
+                    self.window_width,
+                    self.window_height,
+                    self.top_left_graph,
+                    self.bottom_right_graph,
                 );
-                let start_time = timer::time_since_start(ctx);
-                self.image = update_mandel(ctx, self.top_left_graph, self.bottom_right_graph);
-                self.last_top_left_graph = self.top_left_graph;
-                self.last_bottom_right_graph = self.bottom_right_graph;
-                println!("Done");
-                let end_time = timer::time_since_start(ctx);
-                println!("Update took {}ms", (end_time - start_time).as_millis());
-
-                let window_title = format!(
-                    "rusty mandelbrot - viewing {}{:+}i to {}{:+}i",
-                    self.top_left_graph.re,
-                    self.top_left_graph.im,
-                    self.bottom_right_graph.re,
-                    self.bottom_right_graph.im
-                );
-                graphics::set_window_title(ctx, &window_title);
             }
         }
         Ok(())
@@ -136,7 +174,7 @@ impl event::EventHandler for MainState {
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         let clear_color = [0.0, 0.0, 0.0, 1.0].into();
-        let default_params = ([0.0, 0.0], 0.0, [1.0, 1.0, 1.0, 1.0].into());
+        let default_params = graphics::DrawParam::default();
 
         graphics::clear(ctx, clear_color);
 
@@ -176,12 +214,12 @@ impl event::EventHandler for MainState {
 
     fn mouse_button_down_event(
         &mut self,
-        _ctx: &mut Context,
-        _btn: event::MouseButton,
+        ctx: &mut Context,
+        btn: event::MouseButton,
         x: f32,
         y: f32,
     ) {
-        match _btn {
+        match btn {
             event::MouseButton::Left => {
                 self.view_window.selecting = true;
                 self.view_window.left = x as usize;
@@ -189,7 +227,17 @@ impl event::EventHandler for MainState {
                 self.view_window.right = x as usize;
                 self.view_window.bottom = y as usize;
             }
-            _ => println!("Unhandled button press {:?}", _btn),
+            event::MouseButton::Middle => {
+                update_view(
+                    self,
+                    ctx,
+                    self.window_width,
+                    self.window_height,
+                    self.top_left_graph,
+                    self.bottom_right_graph,
+                );
+            }
+            _ => println!("Unhandled button press {:?}", btn),
         };
     }
 
@@ -210,16 +258,16 @@ impl event::EventHandler for MainState {
                     self.bottom_right_graph,
                     self.view_window.left as usize,
                     self.view_window.top as usize,
-                    WIN_WIDTH,
-                    WIN_HEIGHT,
+                    self.window_width,
+                    self.window_height,
                 );
                 self.bottom_right_graph = pix_to_cmplx(
                     self.top_left_graph,
                     self.bottom_right_graph,
                     self.view_window.right as usize,
                     self.view_window.bottom as usize,
-                    WIN_WIDTH,
-                    WIN_HEIGHT,
+                    self.window_width,
+                    self.window_height,
                 );
 
                 self.view_window.right = x as usize;
@@ -227,7 +275,8 @@ impl event::EventHandler for MainState {
                 self.view_window.left = x as usize;
                 self.view_window.top = y as usize;
             }
-            _ => println!("Unhandled button press {:?}", _btn),
+            event::MouseButton::Middle => {}
+            _ => println!("Unhandled button release {:?}", _btn),
         };
     }
 
@@ -236,6 +285,26 @@ impl event::EventHandler for MainState {
             self.view_window.right = x as usize;
             self.view_window.bottom = y as usize;
         }
+    }
+
+    fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
+        graphics::set_screen_coordinates(ctx, graphics::Rect::new(0.0, 0.0, width, height))
+            .unwrap();
+        self.window_width = width as usize;
+        self.window_height = height as usize;
+        println!(
+            "Window resize to {} {}",
+            self.window_width, self.window_height
+        );
+
+        update_view(
+            self,
+            ctx,
+            self.window_width,
+            self.window_height,
+            self.top_left_graph,
+            self.bottom_right_graph,
+        );
     }
 }
 
@@ -290,11 +359,7 @@ pub fn main() -> GameResult {
 
     let cb = ggez::ContextBuilder::new("", "")
         .window_setup(WindowSetup::default())
-        .window_mode(
-            WindowMode::default()
-                .dimensions(WIN_WIDTH as f32, WIN_HEIGHT as f32)
-                .resizable(false),
-        );
+        .window_mode(WindowMode::default());
 
     let (ctx, event_loop) = &mut cb.build()?;
 
