@@ -82,9 +82,11 @@ fn update_view(
 
     main_state.last_top_left_graph = main_state.top_left_graph;
     main_state.last_bottom_right_graph = main_state.bottom_right_graph;
-    println!("Done");
     let end_time = timer::time_since_start(ctx);
-    println!("Update took {}ms", (end_time - start_time).as_millis());
+    println!(
+        "Done, update took {}ms",
+        (end_time - start_time).as_millis()
+    );
 
     let window_title = format!(
         "rusty mandelbrot - viewing {}{:+}i to {}{:+}i",
