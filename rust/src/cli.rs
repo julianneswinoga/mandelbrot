@@ -1,10 +1,16 @@
+use num_complex::Complex;
+use regex::Regex;
 use structopt::StructOpt;
 
 use crate::calculations::FloatPrecision;
 
-fn parse_starting_scale(src: &str) -> Result<[FloatPrecision; 4], String> {
+fn parse_starting_scale(
+    src: &str,
+) -> Result<(Complex<FloatPrecision>, Complex<FloatPrecision>), String> {
+    let re = Regex::new(r"\D").unwrap();
+
     let substrs: Vec<&str> = src
-        .trim_matches(|c| c == '(' || c == ')')
+        .trim_matches(|c: char| re.is_match(&c.to_string()))
         .split(',')
         .collect();
     if substrs.len() != 4 {
@@ -15,12 +21,14 @@ fn parse_starting_scale(src: &str) -> Result<[FloatPrecision; 4], String> {
     for substr in substrs {
         floats.push(match substr.trim().parse::<FloatPrecision>() {
             Ok(f) => f,
-            Err(e) => return Err(format!("Could not parse {:?}", e)),
+            Err(e) => return Err(format!("{}: Could not parse {:?}", substr, e)),
         })
     }
 
-    let rtn_floats: [FloatPrecision; 4] = [floats[0], floats[1], floats[2], floats[3]];
-    Ok(rtn_floats)
+    let default_top_left_scale = Complex::<FloatPrecision>::new(floats[0], floats[1]);
+    let default_bottom_right_scale = Complex::<FloatPrecision>::new(floats[2], floats[3]);
+
+    Ok((default_top_left_scale, default_bottom_right_scale))
 }
 
 #[derive(StructOpt, Debug)]
@@ -40,5 +48,5 @@ pub struct Opt {
         default_value = "(-2.5,-1.0,1.0,1.0)",
         parse(try_from_str = "parse_starting_scale")
     )]
-    pub starting_scale: [FloatPrecision; 4],
+    pub starting_scale: (Complex<FloatPrecision>, Complex<FloatPrecision>),
 }

@@ -309,10 +309,7 @@ impl event::EventHandler for MainState {
 pub fn main() -> GameResult {
     let opt = Opt::from_args();
 
-    let default_top_left_scale =
-        Complex::<FloatPrecision>::new(opt.starting_scale[0], opt.starting_scale[1]);
-    let default_bottom_right_scale =
-        Complex::<FloatPrecision>::new(opt.starting_scale[2], opt.starting_scale[3]);
+    let (default_top_left_scale, default_bottom_right_scale) = opt.starting_scale;
 
     let cb = ggez::ContextBuilder::new("", "")
         .window_setup(WindowSetup::default())
