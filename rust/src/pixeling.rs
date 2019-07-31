@@ -1,5 +1,4 @@
-extern crate palette;
-
+use lazy_static::lazy_static;
 use palette::{Gradient, Hsv, Pixel, Srgb};
 
 const RAINBOW_SIZE: usize = 256;
